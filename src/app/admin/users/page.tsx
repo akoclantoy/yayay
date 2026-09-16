@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { CreateStaffForm } from "@/components/admin/create-staff-form";
+import { RemoveStaffButton } from "@/components/admin/remove-staff-button";
 
 function DatabaseErrorPanel({ message }: { message: string }) {
   return (
@@ -113,6 +114,7 @@ export default async function AdminUsersPage() {
                       <th className="pb-3 pr-4">Role</th>
                       <th className="pb-3 pr-4">Status</th>
                       <th className="pb-3">Joined</th>
+                      <th className="pb-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -134,6 +136,11 @@ export default async function AdminUsersPage() {
                           </Badge>
                         </td>
                         <td className="py-3">{new Date(u.createdAt).toLocaleDateString()}</td>
+                        <td className="py-3 text-right">
+                          {(u.role === "COLLECTION_STAFF" || u.role === "BARANGAY_STAFF") && (
+                            <RemoveStaffButton userId={u.id} name={u.name ?? u.email} />
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
