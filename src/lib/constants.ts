@@ -4,6 +4,12 @@ export const APP_NAME = "EcoRewards";
 export const APP_TAGLINE =
   "Transforming Waste into Rewards through Smart Recycling.";
 
+export const POINT_VALUE_PHP = 0.05;
+export const MIN_GCASH_REDEMPTION_PHP = 100;
+export const MIN_GCASH_REDEMPTION_POINTS = Math.ceil(
+  MIN_GCASH_REDEMPTION_PHP / POINT_VALUE_PHP
+);
+
 export const COLORS = {
   primary: "#16A34A",
   secondary: "#10B981",

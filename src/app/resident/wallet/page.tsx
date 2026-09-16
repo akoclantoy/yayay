@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { formatPoints } from "@/lib/utils";
+import { formatCurrency, formatPoints, pointsToCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RewardsCatalog } from "@/components/resident/rewards-catalog";
@@ -53,6 +53,7 @@ export default async function WalletPage() {
             <p className="text-sm text-muted-foreground">Available balance</p>
             <p className="text-5xl font-bold text-gradient mt-2">{formatPoints(balance)}</p>
             <p className="text-sm text-muted-foreground mt-1">points</p>
+            <p className="text-sm font-medium text-primary mt-2">{formatCurrency(pointsToCurrency(balance))} equivalent</p>
           </CardContent>
         </Card>
         <Card>
@@ -60,6 +61,7 @@ export default async function WalletPage() {
             <p className="text-sm text-muted-foreground">Lifetime earned</p>
             <p className="text-4xl font-bold mt-2">{formatPoints(lifetime)}</p>
             <p className="text-sm text-muted-foreground mt-1">total points</p>
+            <p className="text-sm font-medium text-primary mt-2">{formatCurrency(pointsToCurrency(lifetime))} equivalent</p>
           </CardContent>
         </Card>
       </div>

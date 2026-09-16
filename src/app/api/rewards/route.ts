@@ -4,6 +4,7 @@ import { uploadImage } from "@/lib/cloudinary";
 import { db } from "@/lib/db";
 import { GCASH_REWARD_ID, getGcashRewardMetadata, sanitizeGcashNumber } from "@/lib/gcash-redemption";
 import { z } from "zod";
+import { MIN_GCASH_REDEMPTION_POINTS } from "@/lib/constants";
 
 async function ensureWallet(userId: string) {
   const existing = await db.rewardWallet.findUnique({ where: { residentId: userId } });
@@ -100,6 +101,13 @@ export async function POST(request: Request) {
 
       if (!Number.isInteger(redemptionPoints) || redemptionPoints <= 0) {
         return NextResponse.json({ error: "Enter a positive whole number of points." }, { status: 400 });
+      }
+
+      if (redemptionPoints < MIN_GCASH_REDEMPTION_POINTS) {
+        return NextResponse.json(
+          { error: `GCash redemption requires at least ${MIN_GCASH_REDEMPTION_POINTS} points (PHP 100).` },
+          { status: 400 }
+        );
       }
 
       if (wallet.balance < redemptionPoints) {

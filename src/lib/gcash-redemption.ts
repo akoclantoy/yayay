@@ -1,3 +1,5 @@
+import { MIN_GCASH_REDEMPTION_POINTS } from "@/lib/constants";
+
 export type GCashRewardMetadata = {
   id: string;
   name: string;
@@ -35,7 +37,7 @@ export function getGcashRewardMetadata(): GCashRewardMetadata {
     id: GCASH_REWARD_ID,
     name: "GCash Redemption",
     description: "Request a cash payout through GCash. Upload your QR code and provide your registered GCash mobile number for admin review.",
-    pointsCost: 1,
+    pointsCost: MIN_GCASH_REDEMPTION_POINTS,
     imageUrl: "/gcash.svg",
     type: "CASH",
   };

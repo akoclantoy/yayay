@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { POINT_VALUE_PHP } from "@/lib/constants";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -19,6 +20,10 @@ export function formatCurrency(amount: number): string {
     style: "currency",
     currency: "PHP",
   }).format(amount);
+}
+
+export function pointsToCurrency(points: number): number {
+  return points * POINT_VALUE_PHP;
 }
 
 export function slugify(text: string): string {

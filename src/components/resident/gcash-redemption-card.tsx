@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { MIN_GCASH_REDEMPTION_POINTS, MIN_GCASH_REDEMPTION_PHP } from "@/lib/constants";
+import { formatCurrency, formatPoints, pointsToCurrency } from "@/lib/utils";
 import { GCASH_REWARD_ID, getGcashRewardMetadata, sanitizeGcashNumber } from "@/lib/gcash-redemption";
 
 const metadata = getGcashRewardMetadata();
@@ -21,6 +23,9 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
   if (balance < 1) {
     return null;
   }
+
+  const isEligible = balance >= MIN_GCASH_REDEMPTION_POINTS;
+  const pointsNeeded = MIN_GCASH_REDEMPTION_POINTS - balance;
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -66,8 +71,8 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
     const sanitizedNumber = sanitizeGcashNumber(mobileNumber);
     const points = Number(pointsToRedeem);
 
-    if (!Number.isInteger(points) || points < 1 || points > balance) {
-      toast.error(`Enter a whole number from 1 to ${balance} points.`);
+    if (!Number.isInteger(points) || points < MIN_GCASH_REDEMPTION_POINTS || points > balance) {
+      toast.error(`Enter at least ${formatPoints(MIN_GCASH_REDEMPTION_POINTS)} points (PHP ${MIN_GCASH_REDEMPTION_PHP}) and no more than ${formatPoints(balance)} points.`);
       return;
     }
 
@@ -121,11 +126,19 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
             <img src="/gcash.svg" alt="GCash logo" className="h-10 w-10 rounded-lg bg-white p-1 shadow-sm" />
             <CardTitle className="text-lg">GCash Redemption</CardTitle>
           </div>
-          <Badge variant="secondary">Any amount up to {balance} pts</Badge>
+          <Badge variant={isEligible ? "success" : "secondary"}>
+            {isEligible ? `Minimum PHP ${MIN_GCASH_REDEMPTION_PHP}` : `${formatPoints(pointsNeeded)} pts needed`}
+          </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">{metadata.description}</p>
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
+          <p className="font-medium text-primary">1 point = PHP 0.05</p>
+          <p className="mt-1 text-muted-foreground">
+            GCash redemption starts at {formatPoints(MIN_GCASH_REDEMPTION_POINTS)} points ({formatCurrency(MIN_GCASH_REDEMPTION_PHP)}).
+          </p>
+        </div>
 
         <div className="space-y-2">
           <label htmlFor="gcash-points" className="text-sm font-medium">
@@ -134,15 +147,20 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
           <input
             id="gcash-points"
             type="number"
-            min="1"
+            min={MIN_GCASH_REDEMPTION_POINTS}
             max={balance}
             step="1"
             value={pointsToRedeem}
             onChange={(event) => setPointsToRedeem(event.target.value)}
-            placeholder={`1-${balance}`}
+            placeholder={`${MIN_GCASH_REDEMPTION_POINTS}-${balance}`}
             className="flex h-11 w-full rounded-xl border border-border/80 bg-white/80 px-4 text-sm dark:bg-white/5"
           />
-          <p className="text-xs text-muted-foreground">Available balance: {balance} points</p>
+          <p className="text-xs text-muted-foreground">
+            Available: {formatPoints(balance)} points ({formatCurrency(pointsToCurrency(balance))})
+          </p>
+          {points >= MIN_GCASH_REDEMPTION_POINTS && points <= balance && (
+            <p className="text-xs font-medium text-primary">You will receive {formatCurrency(pointsToCurrency(points))}.</p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -179,8 +197,8 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
           </div>
         )}
 
-        <Button className="w-full" onClick={handleSubmit} disabled={loading} size="lg">
-          {loading ? "Submitting..." : "Submit GCash Redemption"}
+        <Button className="w-full" onClick={handleSubmit} disabled={loading || !isEligible} size="lg">
+          {loading ? "Submitting..." : isEligible ? "Submit GCash Redemption" : "Earn more points to redeem"}
         </Button>
       </CardContent>
     </Card>
