@@ -26,6 +26,10 @@ export function pointsToCurrency(points: number): number {
   return points * POINT_VALUE_PHP;
 }
 
+export function currencyToPoints(amount: number): number {
+  return Math.round(amount / POINT_VALUE_PHP);
+}
+
 export function slugify(text: string): string {
   return text
     .toLowerCase()

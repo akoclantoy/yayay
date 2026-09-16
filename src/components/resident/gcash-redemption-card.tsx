@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MIN_GCASH_REDEMPTION_POINTS, MIN_GCASH_REDEMPTION_PHP } from "@/lib/constants";
-import { formatCurrency, formatPoints, pointsToCurrency } from "@/lib/utils";
+import { currencyToPoints, formatCurrency, formatPoints, pointsToCurrency } from "@/lib/utils";
 import { GCASH_REWARD_ID, getGcashRewardMetadata, sanitizeGcashNumber } from "@/lib/gcash-redemption";
 
 const metadata = getGcashRewardMetadata();
@@ -15,23 +15,25 @@ const metadata = getGcashRewardMetadata();
 export function GCashRedemptionCard({ balance }: { balance: number }) {
   const router = useRouter();
   const [mobileNumber, setMobileNumber] = useState("");
-  const [pointsToRedeem, setPointsToRedeem] = useState("");
+  const [amountToRedeem, setAmountToRedeem] = useState("");
   const [qrPreview, setQrPreview] = useState<string | null>(null);
   const [fileName, setFileName] = useState("");
   const [loading, setLoading] = useState(false);
 
-  if (balance < 1) {
-    return null;
-  }
+  if (balance < 1) return null;
 
   const isEligible = balance >= MIN_GCASH_REDEMPTION_POINTS;
   const pointsNeeded = MIN_GCASH_REDEMPTION_POINTS - balance;
-  const requestedPoints = Number(pointsToRedeem);
+  const requestedAmount = Number(amountToRedeem);
+  const requestedPoints = currencyToPoints(requestedAmount);
+  const isValidAmount = Number.isFinite(requestedAmount)
+    && requestedAmount >= MIN_GCASH_REDEMPTION_PHP
+    && requestedAmount <= pointsToCurrency(balance)
+    && Math.abs(pointsToCurrency(requestedPoints) - requestedAmount) <= 0.001;
 
-  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-
     if (file.size > 5 * 1024 * 1024) {
       toast.error("Please upload an image smaller than 5MB.");
       return;
@@ -54,8 +56,7 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
         const image = new Image();
         image.onerror = () => reject(new Error("Unable to decode image"));
         image.onload = () => {
-          const maxDimension = 1200;
-          const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+          const scale = Math.min(1, 1200 / Math.max(image.width, image.height));
           const canvas = document.createElement("canvas");
           canvas.width = Math.max(1, Math.round(image.width * scale));
           canvas.height = Math.max(1, Math.round(image.height * scale));
@@ -69,45 +70,38 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
   }
 
   async function handleSubmit() {
-    const sanitizedNumber = sanitizeGcashNumber(mobileNumber);
-    const points = Number(pointsToRedeem);
-
-    if (!Number.isInteger(points) || points < MIN_GCASH_REDEMPTION_POINTS || points > balance) {
-      toast.error(`Enter at least ${formatPoints(MIN_GCASH_REDEMPTION_POINTS)} points (PHP ${MIN_GCASH_REDEMPTION_PHP}) and no more than ${formatPoints(balance)} points.`);
+    if (!isValidAmount) {
+      toast.error(`Enter a PHP amount from ${formatCurrency(MIN_GCASH_REDEMPTION_PHP)} to ${formatCurrency(pointsToCurrency(balance))} in PHP 0.05 increments.`);
       return;
     }
 
+    const sanitizedNumber = sanitizeGcashNumber(mobileNumber);
     if (!sanitizedNumber || sanitizedNumber.length < 11) {
       toast.error("Please enter a valid GCash number.");
       return;
     }
-
     if (!qrPreview) {
       toast.error("Please upload a QR image for verification.");
       return;
     }
 
     setLoading(true);
-
     try {
-      const res = await fetch("/api/rewards", {
+      const response = await fetch("/api/rewards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           rewardId: GCASH_REWARD_ID,
-          points,
+          points: requestedPoints,
           gcashNumber: sanitizedNumber,
           qrImageUrl: qrPreview,
         }),
       });
-
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(data?.error ?? "GCash redemption failed");
-      }
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error ?? "GCash redemption failed");
 
       setMobileNumber("");
-      setPointsToRedeem("");
+      setAmountToRedeem("");
       setQrPreview(null);
       setFileName("");
       toast.success("GCash redemption submitted for approval!");
@@ -142,32 +136,28 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="gcash-points" className="text-sm font-medium">
-            Points to redeem
-          </label>
+          <label htmlFor="gcash-amount" className="text-sm font-medium">Redemption amount (PHP)</label>
           <input
-            id="gcash-points"
+            id="gcash-amount"
             type="number"
-            min={MIN_GCASH_REDEMPTION_POINTS}
-            max={balance}
-            step="1"
-            value={pointsToRedeem}
-            onChange={(event) => setPointsToRedeem(event.target.value)}
-            placeholder={`${MIN_GCASH_REDEMPTION_POINTS}-${balance}`}
+            min={MIN_GCASH_REDEMPTION_PHP}
+            max={pointsToCurrency(balance)}
+            step="0.05"
+            value={amountToRedeem}
+            onChange={(event) => setAmountToRedeem(event.target.value)}
+            placeholder={`${MIN_GCASH_REDEMPTION_PHP}-${pointsToCurrency(balance)}`}
             className="flex h-11 w-full rounded-xl border border-border/80 bg-white/80 px-4 text-sm dark:bg-white/5"
           />
           <p className="text-xs text-muted-foreground">
-            Available: {formatPoints(balance)} points ({formatCurrency(pointsToCurrency(balance))})
+            Available: {formatCurrency(pointsToCurrency(balance))} ({formatPoints(balance)} points)
           </p>
-          {requestedPoints >= MIN_GCASH_REDEMPTION_POINTS && requestedPoints <= balance && (
-            <p className="text-xs font-medium text-primary">You will receive {formatCurrency(pointsToCurrency(requestedPoints))}.</p>
+          {isValidAmount && (
+            <p className="text-xs font-medium text-primary">This uses {formatPoints(requestedPoints)} points.</p>
           )}
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="gcash-mobile" className="text-sm font-medium">
-            GCash mobile number
-          </label>
+          <label htmlFor="gcash-mobile" className="text-sm font-medium">GCash mobile number</label>
           <input
             id="gcash-mobile"
             type="tel"
@@ -179,9 +169,7 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="gcash-qr" className="text-sm font-medium">
-            Upload GCash QR image
-          </label>
+          <label htmlFor="gcash-qr" className="text-sm font-medium">Upload GCash QR image</label>
           <input
             id="gcash-qr"
             type="file"
