@@ -37,8 +37,22 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
           <span className="text-muted-foreground">GCash number:</span> {parsed.gcashNumber}
         </p>
         {parsed.qrImageUrl && (
-          <div className="overflow-hidden rounded-lg border bg-white">
-            <img src={parsed.qrImageUrl} alt="GCash QR proof" className="max-h-48 w-full object-contain" />
+          <div className="space-y-2">
+            <div className="overflow-hidden rounded-lg border bg-white">
+              <img
+                src={parsed.qrImageUrl}
+                alt="GCash QR proof sent by resident"
+                className="max-h-72 min-h-40 w-full object-contain"
+              />
+            </div>
+            <a
+              href={parsed.qrImageUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-block text-xs font-medium text-primary underline underline-offset-2"
+            >
+              Open QR image in a new tab
+            </a>
           </div>
         )}
       </div>
@@ -81,7 +95,9 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
         <Card key={r.id}>
           <CardHeader className="pb-2">
             <div className="flex justify-between items-start gap-4">
-              <CardTitle className="text-base">{r.reward.name}</CardTitle>
+              <CardTitle className="text-base">
+                {r.reward.name === "10% Partner Discount" ? "Reward Redemption" : r.reward.name}
+              </CardTitle>
               <Badge>{r.status}</Badge>
             </div>
           </CardHeader>

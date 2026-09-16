@@ -163,7 +163,6 @@ async function main() {
     { name: "₱100 Grocery Voucher", type: "VOUCHER" as const, pointsCost: 500, cashValue: 100, stock: 50 },
     { name: "₱50 Mobile Load", type: "VOUCHER" as const, pointsCost: 250, cashValue: 50, stock: 100 },
     { name: "Eco Bag Set", type: "GIFT" as const, pointsCost: 300, stock: 30 },
-    { name: "10% Partner Discount", type: "DISCOUNT" as const, pointsCost: 150, stock: 200 },
   ];
 
   for (const r of rewards) {
@@ -172,6 +171,11 @@ async function main() {
       await db.reward.create({ data: r });
     }
   }
+
+  await db.reward.updateMany({
+    where: { name: "10% Partner Discount", deletedAt: null },
+    data: { isActive: false, deletedAt: new Date() },
+  });
 
   // Badges
   const badges = [
