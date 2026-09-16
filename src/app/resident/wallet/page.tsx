@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RewardsCatalog } from "@/components/resident/rewards-catalog";
 import { RedeemCard } from "@/components/resident/redeem-card";
+import { GCashRedemptionCard } from "@/components/resident/gcash-redemption-card";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,7 @@ export default async function WalletPage() {
       </div>
 
       <RedeemCard balance={balance} />
+      <GCashRedemptionCard balance={balance} />
 
       <Card>
         <CardHeader>

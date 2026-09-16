@@ -6,14 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatPoints } from "@/lib/utils";
+import { parseGcashNotes } from "@/lib/gcash-redemption";
 
 type Redemption = {
   id: string;
   points: number;
   status: string;
+  notes: string | null;
   createdAt: string;
   user: { name: string | null; email: string };
-  reward: { name: string };
+  reward: { name: string; imageUrl?: string | null };
 };
 
 const ACTIONS = [
@@ -23,6 +25,25 @@ const ACTIONS = [
 
 export function RedemptionManager({ initial }: { initial: Redemption[] }) {
   const [redemptions, setRedemptions] = useState(initial);
+
+  function renderNotes(redemption: Redemption) {
+    const parsed = parseGcashNotes(redemption.notes);
+    if (!parsed || parsed.type !== "GCASH") return null;
+
+    return (
+      <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 space-y-3 text-xs">
+        <p className="font-medium text-foreground">GCash redemption request</p>
+        <p>
+          <span className="text-muted-foreground">GCash number:</span> {parsed.gcashNumber}
+        </p>
+        {parsed.qrImageUrl && (
+          <div className="overflow-hidden rounded-lg border bg-white">
+            <img src={parsed.qrImageUrl} alt="GCash QR proof" className="max-h-48 w-full object-contain" />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   async function updateStatus(id: string, status: "APPROVED" | "REJECTED") {
     try {
@@ -68,6 +89,7 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
             <p>
               {r.user.name ?? r.user.email} · {formatPoints(r.points)} pts
             </p>
+            {renderNotes(r)}
             <p className="text-xs text-muted-foreground">
               Requested {new Date(r.createdAt).toLocaleString()}
             </p>

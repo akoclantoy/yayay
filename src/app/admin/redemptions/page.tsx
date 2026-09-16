@@ -7,7 +7,7 @@ export default async function AdminRedemptionsPage() {
     orderBy: { createdAt: "desc" },
     include: {
       user: { select: { name: true, email: true } },
-      reward: { select: { name: true } },
+      reward: { select: { name: true, imageUrl: true } },
     },
   });
 
@@ -17,9 +17,13 @@ export default async function AdminRedemptionsPage() {
     id: r.id,
     points: r.points,
     status: r.status,
+    notes: r.notes,
     createdAt: r.createdAt.toISOString(),
     user: r.user,
-    reward: r.reward,
+    reward: {
+      ...r.reward,
+      imageUrl: r.reward.imageUrl ?? null,
+    },
   }));
 
   return (

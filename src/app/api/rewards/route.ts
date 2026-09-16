@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole, requireSession } from "@/lib/api-auth";
 import { db } from "@/lib/db";
+import { GCASH_REWARD_ID, getGcashRewardMetadata, sanitizeGcashNumber } from "@/lib/gcash-redemption";
 import { z } from "zod";
 
 async function ensureWallet(userId: string) {
@@ -8,6 +9,33 @@ async function ensureWallet(userId: string) {
   if (existing) return existing;
 
   return db.rewardWallet.create({ data: { residentId: userId, balance: 0, lifetime: 0 } });
+}
+
+async function ensureGcashReward() {
+  const metadata = getGcashRewardMetadata();
+
+  return db.reward.upsert({
+    where: { id: metadata.id },
+    update: {
+      name: metadata.name,
+      description: metadata.description,
+      type: metadata.type,
+      pointsCost: metadata.pointsCost,
+      imageUrl: metadata.imageUrl,
+      isActive: true,
+      stock: 9999,
+    },
+    create: {
+      id: metadata.id,
+      name: metadata.name,
+      description: metadata.description,
+      type: metadata.type,
+      pointsCost: metadata.pointsCost,
+      imageUrl: metadata.imageUrl,
+      stock: 9999,
+      isActive: true,
+    },
+  });
 }
 
 export async function GET() {
@@ -40,18 +68,79 @@ export async function POST(request: Request) {
   if ("error" in authResult) return authResult.error;
 
   try {
-    const { rewardId, points } = redeemSchema.parse(await request.json());
+    const payload = await request.json().catch(() => ({}));
+    const rewardId = typeof payload.rewardId === "string" ? payload.rewardId : undefined;
+    const points = typeof payload.points === "number" ? payload.points : undefined;
+    const gcashNumber = typeof payload.gcashNumber === "string" ? payload.gcashNumber : undefined;
+    const qrImageUrl = typeof payload.qrImageUrl === "string" ? payload.qrImageUrl : undefined;
+
+    if (rewardId === GCASH_REWARD_ID || gcashNumber || qrImageUrl) {
+      const sanitizedNumber = sanitizeGcashNumber(gcashNumber ?? "");
+      if (!sanitizedNumber) {
+        return NextResponse.json({ error: "A valid GCash mobile number is required." }, { status: 400 });
+      }
+
+      if (!qrImageUrl || !qrImageUrl.startsWith("data:image/")) {
+        return NextResponse.json({ error: "Please upload your GCash QR image." }, { status: 400 });
+      }
+
+      const gcashReward = await ensureGcashReward();
+      const wallet = await ensureWallet(authResult.session.user.id);
+
+      if (wallet.balance < gcashReward.pointsCost) {
+        return NextResponse.json(
+          {
+            error: `Insufficient points. You need ${gcashReward.pointsCost} points but have ${wallet.balance}.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const redemption = await db.$transaction(async (tx) => {
+        const req = await tx.redemptionRequest.create({
+          data: {
+            userId: authResult.session.user.id,
+            rewardId: gcashReward.id,
+            points: gcashReward.pointsCost,
+            status: "PENDING",
+            notes: JSON.stringify({
+              type: "GCASH",
+              gcashNumber: sanitizedNumber,
+              qrImageUrl,
+              submittedAt: new Date().toISOString(),
+            }),
+          },
+          include: { reward: true },
+        });
+
+        await tx.notification.create({
+          data: {
+            userId: authResult.session.user.id,
+            title: "GCash redemption submitted",
+            message: `Your GCash redemption request for ${sanitizedNumber} is pending approval.`,
+            type: "reward",
+            link: "/resident/wallet",
+          },
+        });
+
+        return req;
+      });
+
+      return NextResponse.json(redemption, { status: 201 });
+    }
+
+    const { rewardId: standardRewardId, points: standardPoints } = redeemSchema.parse(payload);
     const userId = authResult.session.user.id;
 
     const [requestedReward, wallet] = await Promise.all([
-      rewardId
-        ? db.reward.findFirst({ where: { id: rewardId, isActive: true, deletedAt: null } })
+      standardRewardId
+        ? db.reward.findFirst({ where: { id: standardRewardId, isActive: true, deletedAt: null } })
         : db.reward.findFirst({
             where: {
               isActive: true,
               deletedAt: null,
               stock: { gt: 0 },
-              pointsCost: { lte: points },
+              pointsCost: { lte: standardPoints },
             },
             orderBy: { pointsCost: "desc" },
           }),
@@ -66,7 +155,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Reward out of stock" }, { status: 400 });
     }
 
-    const redemptionPoints = points ?? requestedReward.pointsCost;
+    const redemptionPoints = standardPoints ?? requestedReward.pointsCost;
     if (wallet.balance < redemptionPoints) {
       return NextResponse.json(
         {
