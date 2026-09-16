@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AnnouncementForm } from "@/components/admin/announcement-form";
 
 export default async function AdminAnnouncementsPage() {
   const announcements = await db.announcement.findMany({
@@ -17,6 +18,8 @@ export default async function AdminAnnouncementsPage() {
           {announcements.length} active announcements
         </p>
       </div>
+
+      <AnnouncementForm />
 
       {announcements.length === 0 ? (
         <Card>
