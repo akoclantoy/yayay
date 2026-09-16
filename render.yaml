@@ -13,6 +13,8 @@ services:
     envVars:
       - key: PORT
         value: "18012"
+      - key: SKIP_DATABASE_SEED
+        value: "true"
       - key: NODE_VERSION
         value: "20"
       - key: NODE_ENV

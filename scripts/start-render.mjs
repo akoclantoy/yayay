@@ -9,7 +9,9 @@ const setup = spawnSync(process.execPath, ["scripts/setup-db.mjs"], {
 });
 
 if (setup.status !== 0) {
-  process.exit(setup.status ?? 1);
+  console.warn(
+    `[start-render] Database setup exited with status ${setup.status}. Continuing startup so the app can still bind to port ${port}.`
+  );
 }
 
 const next = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(port)], {

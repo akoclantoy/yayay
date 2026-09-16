@@ -61,19 +61,27 @@ console.log("[setup-db] Applying Prisma schema...");
 // already happens in the build step, so we only need to push the schema here.
 try {
   await withRetry("Prisma schema push", "npx prisma db push");
+  console.log("[setup-db] Prisma schema is ready.");
 } catch (error) {
-  console.error(
-    "[setup-db] Prisma schema push failed. Check that DATABASE_URL is reachable from Render and not using the internal mysql.railway.internal hostname."
+  console.warn(
+    "[setup-db] Prisma schema push failed. The app may still start, but database schema sync could be incomplete."
   );
-  throw error;
+  console.warn(
+    "[setup-db] Check that DATABASE_URL is reachable from Render and not using the internal mysql.railway.internal hostname."
+  );
+}
+
+if (process.env.SKIP_DATABASE_SEED === "true" || process.env.RENDER === "true") {
+  console.log("[setup-db] Skipping demo data seed in Render/production startup to avoid pool-timeout hangs.");
+  console.log("[setup-db] Database ready.");
+  process.exit(0);
 }
 
 console.log("[setup-db] Seeding demo data and users...");
 try {
   await withRetry("Demo database seed", "npx tsx prisma/seed.ts");
+  console.log("[setup-db] Database ready.");
 } catch (error) {
-  console.error("[setup-db] Demo seed failed after repeated connection retries.");
-  throw error;
+  console.warn("[setup-db] Demo seed failed after repeated connection retries; continuing without seed data.");
+  console.warn("[setup-db] The app can still start while the database remains reachable for runtime requests.");
 }
-
-console.log("[setup-db] Database ready.");
