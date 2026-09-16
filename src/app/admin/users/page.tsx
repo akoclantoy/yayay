@@ -1,12 +1,10 @@
 import { db } from "@/lib/db";
 import { ensureDemoUsers } from "@/lib/bootstrap-users";
-import { ROLE_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { CreateStaffForm } from "@/components/admin/create-staff-form";
-import { RemoveStaffButton } from "@/components/admin/remove-staff-button";
+import { UsersTable } from "@/components/admin/users-table";
 
 function DatabaseErrorPanel({ message }: { message: string }) {
   return (
@@ -104,49 +102,7 @@ export default async function AdminUsersPage() {
         ) : (
           <Card>
             <CardHeader><CardTitle>All users</CardTitle></CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-muted-foreground">
-                      <th className="pb-3 pr-4">Name</th>
-                      <th className="pb-3 pr-4">Email</th>
-                      <th className="pb-3 pr-4">Role</th>
-                      <th className="pb-3 pr-4">Status</th>
-                      <th className="pb-3">Joined</th>
-                      <th className="pb-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((u) => (
-                      <tr key={u.id} className="border-b border-border/50">
-                        <td className="py-3 pr-4 font-medium">
-                          <div>{u.name ?? "—"}</div>
-                          {(u.role === "COLLECTION_STAFF" || u.role === "BARANGAY_STAFF") && (
-                            <div className="text-xs font-normal text-primary">Staff</div>
-                          )}
-                        </td>
-                        <td className="py-3 pr-4">{u.email}</td>
-                        <td className="py-3 pr-4">
-                          <Badge variant="secondary">{ROLE_LABELS[u.role]}</Badge>
-                        </td>
-                        <td className="py-3 pr-4">
-                          <Badge variant={u.isActive ? "success" : "warning"}>
-                            {u.isActive ? "Active" : "Inactive"}
-                          </Badge>
-                        </td>
-                        <td className="py-3">{new Date(u.createdAt).toLocaleDateString()}</td>
-                        <td className="py-3 text-right">
-                          {(u.role === "COLLECTION_STAFF" || u.role === "BARANGAY_STAFF") && (
-                            <RemoveStaffButton userId={u.id} name={u.name ?? u.email} />
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
+              <UsersTable users={users} />
           </Card>
         )}
 
