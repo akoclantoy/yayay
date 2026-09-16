@@ -4,7 +4,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { resolvePgConnectionString } from "@/lib/database-url";
+import { resolveDatabaseConnectionString } from "@/lib/database-url";
 import type { UserRole } from "@/generated/prisma/enums";
 import { loginSchema } from "@/lib/validators/auth";
 import { authConfig } from "@/auth.config";
@@ -42,7 +42,7 @@ const googleConfigured =
   Boolean(process.env.GOOGLE_CLIENT_ID) &&
   Boolean(process.env.GOOGLE_CLIENT_SECRET);
 
-const hasDatabase = Boolean(resolvePgConnectionString());
+const hasDatabase = Boolean(resolveDatabaseConnectionString());
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,

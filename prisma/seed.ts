@@ -1,7 +1,10 @@
-import "dotenv/config";
+import { config } from "dotenv";
 import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
 import { DEFAULT_WASTE_CATEGORIES } from "../src/lib/constants";
+
+config({ path: ".env.local" });
+config();
 
 async function main() {
   console.log("Seeding database...");

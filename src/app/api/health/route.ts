@@ -37,7 +37,7 @@ function getHealthFailureReason(error: unknown, databaseConfigured: boolean) {
     return "Database schema is not initialized. Run prisma db push and prisma db seed for this project.";
   }
 
-  return `Database connection failed. Check DATABASE_URL/DIRECT_URL and the Render Postgres service. Details: ${message}`;
+  return `Database connection failed. Check DATABASE_URL/DIRECT_URL and the Railway MySQL service. Details: ${message}`;
 }
 
 export async function GET() {

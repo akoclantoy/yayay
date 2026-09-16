@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
 }
 
 enum UserRole {
@@ -289,7 +289,7 @@ model RecyclingRecord {
   pointsEarned    Int       @default(0)
   carbonSavedKg   Float     @default(0)
   notes           String?   @db.Text
-  images          String[]  @default([])
+  images          Json      @default("[]")
   collectionDate  DateTime  @default(now())
   verified        Boolean   @default(false)
   deletedAt       DateTime?
@@ -388,7 +388,7 @@ model PickupRequest {
   scheduledDate   DateTime?
   status          PickupStatus @default(PENDING)
   wasteNotes      String?      @db.Text
-  images          String[]     @default([])
+  images          Json         @default("[]")
   collectedAt     DateTime?
   deletedAt       DateTime?
   createdAt       DateTime     @default(now())
