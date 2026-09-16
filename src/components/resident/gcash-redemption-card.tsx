@@ -26,6 +26,7 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
 
   const isEligible = balance >= MIN_GCASH_REDEMPTION_POINTS;
   const pointsNeeded = MIN_GCASH_REDEMPTION_POINTS - balance;
+  const requestedPoints = Number(pointsToRedeem);
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -158,8 +159,8 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
           <p className="text-xs text-muted-foreground">
             Available: {formatPoints(balance)} points ({formatCurrency(pointsToCurrency(balance))})
           </p>
-          {points >= MIN_GCASH_REDEMPTION_POINTS && points <= balance && (
-            <p className="text-xs font-medium text-primary">You will receive {formatCurrency(pointsToCurrency(points))}.</p>
+          {requestedPoints >= MIN_GCASH_REDEMPTION_POINTS && requestedPoints <= balance && (
+            <p className="text-xs font-medium text-primary">You will receive {formatCurrency(pointsToCurrency(requestedPoints))}.</p>
           )}
         </div>
 
