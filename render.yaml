@@ -24,7 +24,8 @@ services:
         value: "true"
       - key: NEXTAUTH_URL
         value: https://yayay-8tut.onrender.com
-      # Set DATABASE_URL to the Railway MySQL URL in Render Dashboard -> Environment.
+      # Set DATABASE_URL to a reachable public MySQL URL from Railway or another host that Render can access.
+      # Do NOT use mysql.railway.internal from Render; it is not reachable from Render services.
       # Set in Render Dashboard → Environment (not committed):
       # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET — Gmail / Google sign-in
       # GEMINI_API_KEY — AI assistant & waste classification

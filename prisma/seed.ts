@@ -6,26 +6,51 @@ import { DEFAULT_WASTE_CATEGORIES } from "../src/lib/constants";
 config({ path: ".env.local" });
 config();
 
+async function withRetry(label: string, operation: () => Promise<void>) {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      await operation();
+      return;
+    } catch (error) {
+      lastError = error;
+      const message = String(error instanceof Error ? error.message : error ?? "");
+      const isTransient = /pool timeout|P2039|ECONN|timed out|Can't reach database|connection.*pool/i.test(message);
+
+      if (!isTransient || attempt === 5) {
+        throw error;
+      }
+
+      console.warn(`[seed] ${label} failed (attempt ${attempt}/5); retrying in 3s...`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  }
+
+  throw lastError;
+}
+
 async function main() {
   console.log("Seeding database...");
 
-  // Waste categories
-  for (const cat of DEFAULT_WASTE_CATEGORIES) {
-    await db.wasteCategory.upsert({
-      where: { type: cat.type },
-      update: {
-        name: cat.name,
-        pointsPerKg: cat.pointsPerKg,
-        carbonFactorKg: cat.carbonFactorKg,
-      },
-      create: {
-        type: cat.type,
-        name: cat.name,
-        pointsPerKg: cat.pointsPerKg,
-        carbonFactorKg: cat.carbonFactorKg,
-      },
-    });
-  }
+  await withRetry("waste category seed", async () => {
+    for (const cat of DEFAULT_WASTE_CATEGORIES) {
+      await db.wasteCategory.upsert({
+        where: { type: cat.type },
+        update: {
+          name: cat.name,
+          pointsPerKg: cat.pointsPerKg,
+          carbonFactorKg: cat.carbonFactorKg,
+        },
+        create: {
+          type: cat.type,
+          name: cat.name,
+          pointsPerKg: cat.pointsPerKg,
+          carbonFactorKg: cat.carbonFactorKg,
+        },
+      });
+    }
+  });
 
   // Barangays
   const barangay = await db.barangay.upsert({
