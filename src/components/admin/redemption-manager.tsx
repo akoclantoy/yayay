@@ -33,6 +33,9 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
     return (
       <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 space-y-3 text-xs">
         <p className="font-medium text-foreground">GCash redemption request</p>
+        <p className="font-semibold text-foreground">
+          Points requested: {formatPoints(redemption.points)} pts
+        </p>
         <p>
           <span className="text-muted-foreground">GCash number:</span> {parsed.gcashNumber}
         </p>
