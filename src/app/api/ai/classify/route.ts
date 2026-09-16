@@ -87,6 +87,13 @@ export async function POST(request: Request) {
       }
     }
 
+    if (!isGeminiConfigured() && (imageUrl || imageData)) {
+      return NextResponse.json(
+        { error: "AI identification is not configured. Add GEMINI_API_KEY to the server environment." },
+        { status: 503 }
+      );
+    }
+
     const fallback = classifyFromText(description ?? "");
     return NextResponse.json(fallback);
   } catch (error) {

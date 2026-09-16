@@ -37,6 +37,15 @@ function RecordForm() {
   }, []);
 
   useEffect(() => {
+    if (!cameraActive || !videoRef.current || !streamRef.current) return;
+
+    videoRef.current.srcObject = streamRef.current;
+    void videoRef.current.play().catch(() => {
+      toast.error("Camera preview could not start. Check browser camera permission.");
+    });
+  }, [cameraActive]);
+
+  useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -50,16 +59,17 @@ function RecordForm() {
   }
 
   async function startCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("Camera access requires HTTPS or localhost in a supported browser.");
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
         audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
       setCameraActive(true);
     } catch {
       toast.error("Unable to open the camera. Check browser permission and use HTTPS.");
@@ -75,6 +85,14 @@ function RecordForm() {
 
     setIdentifying(true);
     try {
+      await new Promise<void>((resolve) => {
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          resolve();
+          return;
+        }
+        video.addEventListener("loadeddata", () => resolve(), { once: true });
+      });
+
       const canvas = document.createElement("canvas");
       const scale = Math.min(1, 1280 / video.videoWidth);
       canvas.width = Math.round(video.videoWidth * scale);
