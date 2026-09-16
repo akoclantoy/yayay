@@ -13,11 +13,12 @@ const metadata = getGcashRewardMetadata();
 export function GCashRedemptionCard({ balance }: { balance: number }) {
   const router = useRouter();
   const [mobileNumber, setMobileNumber] = useState("");
+  const [pointsToRedeem, setPointsToRedeem] = useState("");
   const [qrPreview, setQrPreview] = useState<string | null>(null);
   const [fileName, setFileName] = useState("");
   const [loading, setLoading] = useState(false);
 
-  if (balance < metadata.pointsCost) {
+  if (balance < 1) {
     return null;
   }
 
@@ -40,6 +41,12 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
 
   async function handleSubmit() {
     const sanitizedNumber = sanitizeGcashNumber(mobileNumber);
+    const points = Number(pointsToRedeem);
+
+    if (!Number.isInteger(points) || points < 1 || points > balance) {
+      toast.error(`Enter a whole number from 1 to ${balance} points.`);
+      return;
+    }
 
     if (!sanitizedNumber || sanitizedNumber.length < 11) {
       toast.error("Please enter a valid GCash number.");
@@ -59,6 +66,7 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           rewardId: GCASH_REWARD_ID,
+          points,
           gcashNumber: sanitizedNumber,
           qrImageUrl: qrPreview,
         }),
@@ -70,6 +78,7 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
       }
 
       setMobileNumber("");
+      setPointsToRedeem("");
       setQrPreview(null);
       setFileName("");
       toast.success("GCash redemption submitted for approval!");
@@ -89,11 +98,29 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
             <img src="/gcash.svg" alt="GCash logo" className="h-10 w-10 rounded-lg bg-white p-1 shadow-sm" />
             <CardTitle className="text-lg">GCash Redemption</CardTitle>
           </div>
-          <Badge variant="secondary">{metadata.pointsCost} pts</Badge>
+          <Badge variant="secondary">Any amount up to {balance} pts</Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">{metadata.description}</p>
+
+        <div className="space-y-2">
+          <label htmlFor="gcash-points" className="text-sm font-medium">
+            Points to redeem
+          </label>
+          <input
+            id="gcash-points"
+            type="number"
+            min="1"
+            max={balance}
+            step="1"
+            value={pointsToRedeem}
+            onChange={(event) => setPointsToRedeem(event.target.value)}
+            placeholder={`1-${balance}`}
+            className="flex h-11 w-full rounded-xl border border-border/80 bg-white/80 px-4 text-sm dark:bg-white/5"
+          />
+          <p className="text-xs text-muted-foreground">Available balance: {balance} points</p>
+        </div>
 
         <div className="space-y-2">
           <label htmlFor="gcash-mobile" className="text-sm font-medium">

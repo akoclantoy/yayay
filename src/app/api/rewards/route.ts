@@ -86,11 +86,16 @@ export async function POST(request: Request) {
 
       const gcashReward = await ensureGcashReward();
       const wallet = await ensureWallet(authResult.session.user.id);
+      const redemptionPoints = points ?? gcashReward.pointsCost;
 
-      if (wallet.balance < gcashReward.pointsCost) {
+      if (!Number.isInteger(redemptionPoints) || redemptionPoints <= 0) {
+        return NextResponse.json({ error: "Enter a positive whole number of points." }, { status: 400 });
+      }
+
+      if (wallet.balance < redemptionPoints) {
         return NextResponse.json(
           {
-            error: `Insufficient points. You need ${gcashReward.pointsCost} points but have ${wallet.balance}.`,
+            error: `Insufficient points. You need ${redemptionPoints} points but have ${wallet.balance}.`,
           },
           { status: 400 }
         );
@@ -101,7 +106,7 @@ export async function POST(request: Request) {
           data: {
             userId: authResult.session.user.id,
             rewardId: gcashReward.id,
-            points: gcashReward.pointsCost,
+            points: redemptionPoints,
             status: "PENDING",
             notes: JSON.stringify({
               type: "GCASH",
