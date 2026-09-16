@@ -1,0 +1,66 @@
+# Render Blueprint — Community Recycling Reward System
+# Deploy: Dashboard → New → Blueprint → connect this repo
+
+databases:
+  - name: ecorewards-db
+    plan: free
+    databaseName: ecorewards
+    user: ecorewards
+
+services:
+  - type: web
+    name: ecorewards
+    rootDir: .
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build:render
+    preDeployCommand: npm run db:setup
+    startCommand: npm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ecorewards-db
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: AUTH_TRUST_HOST
+        value: "true"
+      - key: NEXTAUTH_URL
+        value: https://community-recycling-rewards.onrender.com
+      # Set in Render Dashboard → Environment (not committed):
+      # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET — Gmail / Google sign-in
+      # GEMINI_API_KEY — AI assistant & waste classification
+      # GEMINI_CHAT_MODEL=gemini-2.5-flash-lite (optional)
+      # GEMINI_VISION_MODEL=gemini-2.5-flash (optional)
+NODE_VERSION=20
+NODE_ENV=production
+
+DATABASE_URL=postgresql://environment_d70n_user:7eKWA0jB9bJCLVLXbPqyQiHneKUJKdSG@dpg-dae7p8id0e5s73ffq26g-a.singapore-postgres.render.com/environment_d70n?sslmode=require
+DIRECT_URL=postgresql://environment_d70n_user:7eKWA0jB9bJCLVLXbPqyQiHneKUJKdSG@dpg-dae7p8id0e5s73ffq26g-a.singapore-postgres.render.com/environment_d70n?sslmode=require
+
+AUTH_SECRET=generate-a-long-random-secret
+AUTH_TRUST_HOST=true
+NEXTAUTH_URL=https://community-recycling-rewards.onrender.com
+
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+GEMINI_API_KEY=your-gemini-key
+GEMINI_CHAT_MODEL=gemini-2.5-flash-lite
+GEMINI_VISION_MODEL=gemini-2.5-flash
+
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+EMAIL_FROM="EcoRewards" <your-email@gmail.com>
+
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret

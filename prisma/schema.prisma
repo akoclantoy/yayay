@@ -1,0 +1,606 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  COLLECTION_STAFF
+  BARANGAY_STAFF
+  RESIDENT
+  GUEST
+}
+
+enum WasteType {
+  PLASTIC
+  PAPER
+  GLASS
+  METAL
+  ELECTRONICS
+  ORGANIC
+  TEXTILE
+  HAZARDOUS
+  OTHER
+}
+
+enum PickupStatus {
+  PENDING
+  APPROVED
+  COLLECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum RedemptionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FULFILLED
+  CANCELLED
+}
+
+enum RewardType {
+  VOUCHER
+  CASH
+  GIFT
+  DISCOUNT
+  BARANGAY_INCENTIVE
+}
+
+enum TransactionType {
+  EARN
+  REDEEM
+  ADJUSTMENT
+  BONUS
+  REFUND
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  BOTH
+}
+
+enum AnnouncementPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String?
+  image         String?
+  role          UserRole  @default(RESIDENT)
+  phone         String?
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts              Account[]
+  sessions              Session[]
+  residentProfile       ResidentProfile?
+  staffProfile          StaffProfile?
+  notifications         Notification[]
+  auditLogs             AuditLog[]              @relation("AuditActor")
+  recyclingRecords      RecyclingRecord[]       @relation("RecordedBy")
+  verifiedRecycling     RecyclingRecord[]       @relation("VerifiedBy")
+  pickupRequests        PickupRequest[]
+  assignedPickups       PickupRequest[]         @relation("AssignedStaff")
+  redemptionRequests    RedemptionRequest[]
+  rewardTransactions    RewardTransaction[]
+  userBadges            UserBadge[]
+  userAchievements      UserAchievement[]
+  aiConversations       AIConversation[]
+  passwordResetTokens   PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  createdAnnouncements  Announcement[]          @relation("AnnouncementAuthor")
+  createdNews           News[]                    @relation("NewsAuthor")
+
+  @@index([role])
+  @@index([email])
+  @@index([deletedAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expires   DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expires   DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Barangay {
+  id          String    @id @default(cuid())
+  name        String
+  code        String    @unique
+  description String?   @db.Text
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  population  Int?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  residents         ResidentProfile[]
+  collectionCenters CollectionCenter[]
+  pickupRoutes      PickupRoute[]
+  schedules         CollectionSchedule[]
+
+  @@index([code])
+  @@index([deletedAt])
+}
+
+model ResidentProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  barangayId      String?
+  qrCode          String   @unique @default(cuid())
+  address         String?
+  houseNumber     String?
+  environmentalScore Int   @default(0)
+  recyclingStreak    Int   @default(0)
+  totalWeightKg      Float @default(0)
+  carbonSavedKg      Float @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  barangay          Barangay?           @relation(fields: [barangayId], references: [id], onDelete: SetNull)
+  wallet            RewardWallet?
+  recyclingRecords  RecyclingRecord[]
+
+  @@index([barangayId])
+  @@index([qrCode])
+}
+
+model StaffProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  employeeId       String?  @unique
+  assignedCenterId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedCenter CollectionCenter? @relation(fields: [assignedCenterId], references: [id], onDelete: SetNull)
+  routes         PickupRoute[]
+
+  @@index([assignedCenterId])
+}
+
+model CollectionCenter {
+  id          String    @id @default(cuid())
+  name        String
+  description String?   @db.Text
+  address     String
+  barangayId  String?
+  latitude    Float
+  longitude   Float
+  phone       String?
+  openHours   String?
+  capacityKg  Float?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  barangay          Barangay?          @relation(fields: [barangayId], references: [id], onDelete: SetNull)
+  staff             StaffProfile[]
+  recyclingRecords  RecyclingRecord[]
+  schedules         CollectionSchedule[]
+  pickupRoutes      PickupRoute[]
+
+  @@index([barangayId])
+  @@index([deletedAt])
+}
+
+model WasteCategory {
+  id             String    @id @default(cuid())
+  type           WasteType @unique
+  name           String
+  description    String?   @db.Text
+  pointsPerKg    Float     @default(1)
+  carbonFactorKg Float     @default(0.5)
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  recyclingRecords RecyclingRecord[]
+
+  @@index([type])
+}
+
+model RecyclingRecord {
+  id              String    @id @default(cuid())
+  residentId      String
+  wasteCategoryId String
+  centerId        String?
+  recordedById    String?
+  verifiedById    String?
+  weightKg        Float
+  quantity        Int       @default(1)
+  pointsEarned    Int       @default(0)
+  carbonSavedKg   Float     @default(0)
+  notes           String?   @db.Text
+  images          String[]  @default([])
+  collectionDate  DateTime  @default(now())
+  verified        Boolean   @default(false)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  resident      ResidentProfile @relation(fields: [residentId], references: [userId], onDelete: Cascade)
+  wasteCategory WasteCategory   @relation(fields: [wasteCategoryId], references: [id])
+  center        CollectionCenter? @relation(fields: [centerId], references: [id], onDelete: SetNull)
+  recordedBy    User?           @relation("RecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  verifiedBy    User?           @relation("VerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([residentId])
+  @@index([collectionDate])
+  @@index([wasteCategoryId])
+  @@index([deletedAt])
+}
+
+model RewardWallet {
+  id        String   @id @default(cuid())
+  residentId String  @unique
+  balance   Int      @default(0)
+  lifetime  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  resident     ResidentProfile     @relation(fields: [residentId], references: [userId], onDelete: Cascade)
+  transactions RewardTransaction[]
+}
+
+model RewardTransaction {
+  id          String          @id @default(cuid())
+  walletId    String
+  userId      String
+  type        TransactionType
+  amount      Int
+  balanceAfter Int
+  description String?
+  referenceId String?
+  createdAt   DateTime        @default(now())
+
+  wallet RewardWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([walletId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Reward {
+  id          String     @id @default(cuid())
+  name        String
+  description String?    @db.Text
+  type        RewardType
+  pointsCost  Int
+  cashValue   Float?
+  imageUrl    String?
+  stock       Int        @default(0)
+  isActive    Boolean    @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  redemptions RedemptionRequest[]
+
+  @@index([type])
+  @@index([deletedAt])
+}
+
+model RedemptionRequest {
+  id        String           @id @default(cuid())
+  userId    String
+  rewardId  String
+  points    Int
+  status    RedemptionStatus @default(PENDING)
+  notes     String?
+  fulfilledAt DateTime?
+  deletedAt DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reward Reward @relation(fields: [rewardId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model PickupRequest {
+  id              String       @id @default(cuid())
+  userId          String
+  assignedStaffId String?
+  address         String
+  latitude        Float?
+  longitude       Float?
+  scheduledDate   DateTime?
+  status          PickupStatus @default(PENDING)
+  wasteNotes      String?      @db.Text
+  images          String[]     @default([])
+  collectedAt     DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user          User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedStaff User? @relation("AssignedStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledDate])
+}
+
+model PickupRoute {
+  id        String   @id @default(cuid())
+  name      String
+  barangayId String?
+  centerId  String?
+  staffId   String?
+  routeDate DateTime
+  waypoints Json?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  barangay Barangay?         @relation(fields: [barangayId], references: [id], onDelete: SetNull)
+  center   CollectionCenter? @relation(fields: [centerId], references: [id], onDelete: SetNull)
+  staff    StaffProfile?     @relation(fields: [staffId], references: [id], onDelete: SetNull)
+
+  @@index([routeDate])
+}
+
+model CollectionSchedule {
+  id         String   @id @default(cuid())
+  title      String
+  barangayId String?
+  centerId   String?
+  startDate  DateTime
+  endDate    DateTime?
+  recurrence String?
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  barangay Barangay?         @relation(fields: [barangayId], references: [id], onDelete: SetNull)
+  center   CollectionCenter? @relation(fields: [centerId], references: [id], onDelete: SetNull)
+
+  @@index([startDate])
+}
+
+model Announcement {
+  id        String               @id @default(cuid())
+  title     String
+  content   String               @db.Text
+  priority  AnnouncementPriority @default(NORMAL)
+  authorId  String?
+  isPinned  Boolean              @default(false)
+  expiresAt DateTime?
+  deletedAt DateTime?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  author User? @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model News {
+  id          String    @id @default(cuid())
+  title       String
+  slug        String    @unique
+  excerpt     String?
+  content     String    @db.Text
+  imageUrl    String?
+  authorId    String?
+  published   Boolean   @default(false)
+  publishedAt DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  author User? @relation("NewsAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([slug])
+  @@index([published])
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  title     String
+  message   String              @db.Text
+  type      String              @default("info")
+  channel   NotificationChannel @default(IN_APP)
+  read      Boolean             @default(false)
+  link      String?
+  createdAt DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+model Badge {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  icon        String?
+  criteria    String?
+  points      Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  userBadges UserBadge[]
+}
+
+model UserBadge {
+  id       String   @id @default(cuid())
+  userId   String
+  badgeId  String
+  earnedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+}
+
+model Achievement {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  target      Int      @default(1)
+  icon        String?
+  createdAt   DateTime @default(now())
+
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  progress      Int      @default(0)
+  completed     Boolean  @default(false)
+  completedAt   DateTime?
+  updatedAt     DateTime @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+}
+
+model Inventory {
+  id          String    @id @default(cuid())
+  name        String
+  sku         String?   @unique
+  quantity    Int       @default(0)
+  unit        String    @default("pcs")
+  description String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([deletedAt])
+}
+
+model AIConversation {
+  id        String   @id @default(cuid())
+  userId    String?
+  title     String?
+  messages  Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entity     String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model PlatformStat {
+  id              String   @id @default(cuid())
+  totalResidents  Int      @default(0)
+  totalRecycledKg Float    @default(0)
+  totalPoints     Int      @default(0)
+  carbonSavedKg   Float    @default(0)
+  updatedAt       DateTime @updatedAt
+}
