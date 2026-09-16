@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,14 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Camera, ScanLine } from "lucide-react";
 
-type Category = { id: string; name: string; pointsPerKg: number };
+type Category = { id: string; name: string; pointsPerKg: number; type: string };
 
 function RecordForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [identifying, setIdentifying] = useState(false);
+  const [aiResult, setAiResult] = useState<{ typeLabel?: string; confidence?: number; tips?: string } | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [form, setForm] = useState({
     residentId: searchParams.get("residentId") ?? "",
     wasteCategoryId: "",
@@ -29,6 +35,73 @@ function RecordForm() {
       .then(setCategories)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    };
+  }, []);
+
+  async function stopCamera() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+  }
+
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraActive(true);
+    } catch {
+      toast.error("Unable to open the camera. Check browser permission and use HTTPS.");
+    }
+  }
+
+  async function identifyWaste() {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+      toast.error("Start the camera and point it at the waste first.");
+      return;
+    }
+
+    setIdentifying(true);
+    try {
+      const canvas = document.createElement("canvas");
+      const scale = Math.min(1, 1280 / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = canvas.toDataURL("image/jpeg", 0.82);
+
+      const response = await fetch("/api/ai/classify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageData, description: "Identify this waste item for recycling." }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "AI identification failed");
+
+      const category = categories.find((item) => item.type === data.type);
+      if (category) {
+        setForm((current) => ({ ...current, wasteCategoryId: category.id }));
+      }
+      setAiResult(data);
+      toast.success(category ? `Identified as ${data.typeLabel}` : "Waste identified; choose the matching category.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "AI identification failed");
+    } finally {
+      setIdentifying(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -105,6 +178,32 @@ function RecordForm() {
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium flex items-center gap-2"><Camera className="h-4 w-4" /> AI Camera Identifier</p>
+                  <p className="text-xs text-muted-foreground">Identify the trash type with the device camera.</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={cameraActive ? stopCamera : startCamera}>
+                  {cameraActive ? "Stop camera" : "Open camera"}
+                </Button>
+              </div>
+              {cameraActive && (
+                <>
+                  <video ref={videoRef} muted playsInline className="aspect-video w-full rounded-lg bg-black object-cover" />
+                  <Button type="button" className="w-full" onClick={identifyWaste} disabled={identifying}>
+                    <ScanLine className="mr-2 h-4 w-4" />
+                    {identifying ? "Identifying..." : "Identify trash"}
+                  </Button>
+                </>
+              )}
+              {aiResult && (
+                <p className="text-sm text-muted-foreground">
+                  AI result: <span className="font-medium text-foreground">{aiResult.typeLabel ?? "Unknown"}</span>
+                  {typeof aiResult.confidence === "number" && ` · ${Math.round(aiResult.confidence * 100)}% confidence`}
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="weight">Weight (kg)</Label>

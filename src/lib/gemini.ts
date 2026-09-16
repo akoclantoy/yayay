@@ -46,6 +46,20 @@ export async function fetchImageAsInlineData(imageUrl: string) {
   };
 }
 
+export function dataUrlAsInlineData(imageData: string) {
+  const match = imageData.match(/^data:(image\/[\w.+-]+);base64,(.+)$/);
+  if (!match) {
+    throw new Error("Invalid image data");
+  }
+
+  return {
+    inlineData: {
+      data: match[2],
+      mimeType: match[1],
+    },
+  };
+}
+
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export function toGeminiContents(messages: ChatMessage[]) {

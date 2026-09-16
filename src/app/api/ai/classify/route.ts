@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/api-auth";
 import { WASTE_TYPE_LABELS } from "@/lib/constants";
 import {
   GEMINI_VISION_MODEL,
+  dataUrlAsInlineData,
   fetchImageAsInlineData,
   getGeminiClient,
   isGeminiConfigured,
@@ -16,16 +17,16 @@ export async function POST(request: Request) {
   if ("error" in authResult) return authResult.error;
 
   try {
-    const { imageUrl, description } = await request.json();
+    const { imageUrl, imageData, description } = await request.json();
 
-    if (!imageUrl && !description) {
+    if (!imageUrl && !imageData && !description) {
       return NextResponse.json(
         { error: "Image or description required" },
         { status: 400 }
       );
     }
 
-    if (isGeminiConfigured() && imageUrl) {
+    if (isGeminiConfigured() && (imageUrl || imageData)) {
       const genAI = getGeminiClient()!;
       const model = genAI.getGenerativeModel({
         model: GEMINI_VISION_MODEL,
@@ -35,7 +36,9 @@ export async function POST(request: Request) {
         },
       });
 
-      const imagePart = await fetchImageAsInlineData(imageUrl);
+      const imagePart = imageData
+        ? dataUrlAsInlineData(imageData)
+        : await fetchImageAsInlineData(imageUrl);
       const result = await model.generateContent([
         { text: CLASSIFY_PROMPT },
         {
