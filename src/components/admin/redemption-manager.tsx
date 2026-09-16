@@ -43,6 +43,10 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
                 src={parsed.qrImageUrl}
                 alt="GCash QR proof sent by resident"
                 className="max-h-72 min-h-40 w-full object-contain"
+                onError={(event) => {
+                  event.currentTarget.alt = "The submitted QR image could not be previewed";
+                  event.currentTarget.className = "hidden";
+                }}
               />
             </div>
             <a

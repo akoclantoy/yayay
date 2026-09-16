@@ -85,15 +85,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Please upload your GCash QR image." }, { status: 400 });
       }
 
-      let uploadedQrUrl: string;
+      let uploadedQrUrl = qrImageUrl;
       try {
         const uploadedQr = await uploadImage(qrImageUrl, "gcash-redemptions");
         uploadedQrUrl = uploadedQr.url;
-      } catch (error) {
-        return NextResponse.json(
-          { error: error instanceof Error ? error.message : "Unable to upload the GCash QR image." },
-          { status: 500 }
-        );
+      } catch {
+        // Keep the compressed image in the redemption metadata when Cloudinary is unavailable.
+        // RedemptionRequest.notes is LONGTEXT, so the request can still reach admin review.
       }
 
       const gcashReward = await ensureGcashReward();

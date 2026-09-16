@@ -31,12 +31,35 @@ export function GCashRedemptionCard({ balance }: { balance: number }) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setQrPreview(String(reader.result));
+    try {
+      const preview = await compressImage(file);
+      setQrPreview(preview);
       setFileName(file.name);
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      toast.error("Unable to read this image. Please choose another QR image.");
+    }
+  }
+
+  function compressImage(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Unable to read image"));
+      reader.onload = () => {
+        const image = new Image();
+        image.onerror = () => reject(new Error("Unable to decode image"));
+        image.onload = () => {
+          const maxDimension = 1200;
+          const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(image.width * scale));
+          canvas.height = Math.max(1, Math.round(image.height * scale));
+          canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.82));
+        };
+        image.src = String(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   async function handleSubmit() {
