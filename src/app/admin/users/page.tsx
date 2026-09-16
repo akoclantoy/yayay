@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { CreateStaffForm } from "@/components/admin/create-staff-form";
 
 function DatabaseErrorPanel({ message }: { message: string }) {
   return (
@@ -85,6 +86,8 @@ export default async function AdminUsersPage() {
           <p className="text-muted-foreground">{users.length} registered users</p>
         </div>
 
+        <CreateStaffForm />
+
         {users.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center space-y-3">
@@ -115,7 +118,12 @@ export default async function AdminUsersPage() {
                   <tbody>
                     {users.map((u) => (
                       <tr key={u.id} className="border-b border-border/50">
-                        <td className="py-3 pr-4 font-medium">{u.name ?? "—"}</td>
+                        <td className="py-3 pr-4 font-medium">
+                          <div>{u.name ?? "—"}</div>
+                          {(u.role === "COLLECTION_STAFF" || u.role === "BARANGAY_STAFF") && (
+                            <div className="text-xs font-normal text-primary">Staff</div>
+                          )}
+                        </td>
                         <td className="py-3 pr-4">{u.email}</td>
                         <td className="py-3 pr-4">
                           <Badge variant="secondary">{ROLE_LABELS[u.role]}</Badge>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -53,8 +53,20 @@ export default function LoginPage() {
         return;
       }
 
+      const session = await getSession();
+      const roleDashboard =
+        session?.user?.role === "ADMIN"
+          ? "/admin"
+          : session?.user?.role === "COLLECTION_STAFF" ||
+              session?.user?.role === "BARANGAY_STAFF"
+            ? "/staff"
+            : "/resident";
+      const destination = searchParams.has("callbackUrl")
+        ? callbackUrl
+        : roleDashboard;
+
       toast.success("Welcome back!");
-      router.push(callbackUrl);
+      router.push(destination);
       router.refresh();
     } catch (error) {
       const errorToast = showAuthErrorToast(error);

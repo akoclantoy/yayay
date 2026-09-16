@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { APP_NAME } from "@/lib/constants";
+import { APP_NAME, ROLE_LABELS } from "@/lib/constants";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { getInitials } from "@/lib/utils";
@@ -189,6 +189,9 @@ export function DashboardShell({
             {!collapsed && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{session?.user?.name}</p>
+                <p className="text-xs text-primary truncate">
+                  {role === "COLLECTION_STAFF" || role === "BARANGAY_STAFF" ? "Staff" : ROLE_LABELS[role]}
+                </p>
                 <p className="text-xs text-muted-foreground truncate">{session?.user?.email}</p>
               </div>
             )}
