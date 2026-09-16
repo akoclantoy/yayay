@@ -365,7 +365,7 @@ model RedemptionRequest {
   rewardId  String
   points    Int
   status    RedemptionStatus @default(PENDING)
-  notes     String?
+  notes     String?          @db.LongText
   fulfilledAt DateTime?
   deletedAt DateTime?
   createdAt DateTime         @default(now())

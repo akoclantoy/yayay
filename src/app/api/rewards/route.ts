@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole, requireSession } from "@/lib/api-auth";
+import { uploadImage } from "@/lib/cloudinary";
 import { db } from "@/lib/db";
 import { GCASH_REWARD_ID, getGcashRewardMetadata, sanitizeGcashNumber } from "@/lib/gcash-redemption";
 import { z } from "zod";
@@ -84,6 +85,17 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Please upload your GCash QR image." }, { status: 400 });
       }
 
+      let uploadedQrUrl: string;
+      try {
+        const uploadedQr = await uploadImage(qrImageUrl, "gcash-redemptions");
+        uploadedQrUrl = uploadedQr.url;
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Unable to upload the GCash QR image." },
+          { status: 500 }
+        );
+      }
+
       const gcashReward = await ensureGcashReward();
       const wallet = await ensureWallet(authResult.session.user.id);
       const redemptionPoints = points ?? gcashReward.pointsCost;
@@ -111,7 +123,7 @@ export async function POST(request: Request) {
             notes: JSON.stringify({
               type: "GCASH",
               gcashNumber: sanitizedNumber,
-              qrImageUrl,
+              qrImageUrl: uploadedQrUrl,
               submittedAt: new Date().toISOString(),
             }),
           },
