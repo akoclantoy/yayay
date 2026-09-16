@@ -11,6 +11,8 @@ services:
     startCommand: npm run start
     healthCheckPath: /
     envVars:
+      - key: PORT
+        value: "18012"
       - key: NODE_VERSION
         value: "20"
       - key: NODE_ENV
