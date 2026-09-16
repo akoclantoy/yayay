@@ -1,7 +1,7 @@
 import { execSync, spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 
-const port = Number(process.env.PORT ?? "18012");
+const port = Number(process.env.PORT ?? "3000");
 const env = { ...process.env, PORT: String(port) };
 
 async function isPortInUse(portNumber) {
