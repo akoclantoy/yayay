@@ -4,7 +4,7 @@ import { uploadImage } from "@/lib/cloudinary";
 import { db } from "@/lib/db";
 import { GCASH_REWARD_ID, getGcashRewardMetadata, sanitizeGcashNumber } from "@/lib/gcash-redemption";
 import { z } from "zod";
-import { MIN_GCASH_REDEMPTION_POINTS } from "@/lib/constants";
+import { MIN_GCASH_REDEMPTION_POINTS, MIN_REDEMPTION_PHP } from "@/lib/constants";
 import { currencyToPoints } from "@/lib/utils";
 
 async function ensureWallet(userId: string) {
@@ -161,6 +161,9 @@ export async function POST(request: Request) {
     } = redeemSchema.parse(payload);
     if (standardAmount !== undefined) {
       const convertedPoints = currencyToPoints(standardAmount);
+      if (standardAmount < MIN_REDEMPTION_PHP) {
+        return NextResponse.json({ error: `Redemption requires at least PHP ${MIN_REDEMPTION_PHP}.` }, { status: 400 });
+      }
       if (!Number.isInteger(convertedPoints) || convertedPoints <= 0 || Math.abs(standardAmount - convertedPoints * 0.05) > 0.001) {
         return NextResponse.json({ error: "PHP amount must be in PHP 0.05 increments." }, { status: 400 });
       }

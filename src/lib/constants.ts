@@ -5,6 +5,10 @@ export const APP_TAGLINE =
   "Transforming Waste into Rewards through Smart Recycling.";
 
 export const POINT_VALUE_PHP = 0.05;
+export const MIN_REDEMPTION_PHP = 150;
+export const MIN_REDEMPTION_POINTS = Math.ceil(
+  MIN_REDEMPTION_PHP / POINT_VALUE_PHP
+);
 export const MIN_GCASH_REDEMPTION_PHP = 100;
 export const MIN_GCASH_REDEMPTION_POINTS = Math.ceil(
   MIN_GCASH_REDEMPTION_PHP / POINT_VALUE_PHP
