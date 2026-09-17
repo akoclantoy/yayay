@@ -54,7 +54,7 @@
     "@types/react-dom": "^19",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
-    "cloudinary": "^2.10.0",
+    "cloudinary": "^2.11.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "dotenv": "^17.4.2",

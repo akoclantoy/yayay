@@ -16,7 +16,10 @@ export function LandingStats() {
 
   useEffect(() => {
     fetch("/api/stats/public")
-      .then((r) => r.json())
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Unable to load public stats");
+        return response.json() as Promise<Stats>;
+      })
       .then(setStats)
       .catch(() => null);
   }, []);
