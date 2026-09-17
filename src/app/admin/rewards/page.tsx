@@ -1,7 +1,5 @@
 import { db } from "@/lib/db";
-import { formatPoints, formatCurrency } from "@/lib/utils";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { RewardManager } from "@/components/admin/reward-manager";
 
 export default async function AdminRewardsPage() {
   const rewards = await db.reward.findMany({
@@ -10,6 +8,18 @@ export default async function AdminRewardsPage() {
     include: { _count: { select: { redemptions: true } } },
   });
 
+  const serialized = rewards.map((reward) => ({
+    id: reward.id,
+    name: reward.name,
+    description: reward.description,
+    type: reward.type,
+    pointsCost: reward.pointsCost,
+    cashValue: reward.cashValue,
+    imageUrl: reward.imageUrl,
+    stock: reward.stock,
+    redemptions: reward._count.redemptions,
+  }));
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div>
@@ -17,24 +27,7 @@ export default async function AdminRewardsPage() {
         <p className="text-muted-foreground">{rewards.length} reward items</p>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {rewards.map((r) => (
-          <Card key={r.id}>
-            <CardHeader>
-              <div className="flex justify-between gap-2">
-                <CardTitle className="text-base">{r.name}</CardTitle>
-                <Badge>{r.type.replace("_", " ")}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <p className="text-xl font-bold text-primary">{formatPoints(r.pointsCost)} pts</p>
-              {r.cashValue && <p>Value: {formatCurrency(r.cashValue)}</p>}
-              <p>Stock: {r.stock}</p>
-              <p className="text-muted-foreground">{r._count.redemptions} redemptions</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <RewardManager initial={serialized} />
     </div>
   );
 }

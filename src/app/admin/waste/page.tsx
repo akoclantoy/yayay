@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
-import { WASTE_TYPE_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { WastePointsManager } from "@/components/admin/waste-points-manager";
 
 export default async function AdminWastePage() {
   const categories = await db.wasteCategory.findMany({
@@ -19,20 +18,7 @@ export default async function AdminWastePage() {
       <Card>
         <CardHeader><CardTitle>Categories</CardTitle></CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {categories.map((c) => (
-              <div key={c.id} className="flex items-center justify-between rounded-xl border p-4">
-                <div>
-                  <p className="font-medium">{c.name}</p>
-                  <p className="text-sm text-muted-foreground">{WASTE_TYPE_LABELS[c.type]}</p>
-                </div>
-                <div className="text-right space-y-1">
-                  <Badge variant="secondary">{c.pointsPerKg} pts/kg</Badge>
-                  <p className="text-xs text-muted-foreground">{c.carbonFactorKg} kg CO₂/kg</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          <WastePointsManager initial={categories} />
         </CardContent>
       </Card>
     </div>
