@@ -83,6 +83,19 @@ export function RewardsCatalog({
           const canRedeem = hasEnoughPoints && hasStock;
           return (
             <Card key={reward.id} className="hover:shadow-lg transition-shadow border-primary/10">
+              <div className="aspect-[4/3] overflow-hidden rounded-t-xl bg-muted/40">
+                {reward.imageUrl ? (
+                  <img
+                    src={reward.imageUrl}
+                    alt={`${reward.name} reward`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                    No image available
+                  </div>
+                )}
+              </div>
               <CardHeader>
                 <div className="flex justify-between items-start gap-2">
                   <CardTitle className="text-lg">{reward.name}</CardTitle>
