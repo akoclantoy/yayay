@@ -1,7 +1,5 @@
 import { db } from "@/lib/db";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { AnnouncementForm } from "@/components/admin/announcement-form";
+import { AnnouncementManager } from "@/components/admin/announcement-manager";
 
 export default async function AdminAnnouncementsPage() {
   const announcements = await db.announcement.findMany({
@@ -9,6 +7,16 @@ export default async function AdminAnnouncementsPage() {
     orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }],
     include: { author: { select: { name: true } } },
   });
+
+  const serialized = announcements.map((announcement) => ({
+    id: announcement.id,
+    title: announcement.title,
+    content: announcement.content,
+    priority: announcement.priority,
+    isPinned: announcement.isPinned,
+    createdAt: announcement.createdAt.toISOString(),
+    authorName: announcement.author?.name ?? null,
+  }));
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -19,38 +27,7 @@ export default async function AdminAnnouncementsPage() {
         </p>
       </div>
 
-      <AnnouncementForm />
-
-      {announcements.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No announcements yet
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {announcements.map((a) => (
-            <Card key={a.id}>
-              <CardHeader className="pb-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <CardTitle className="text-base">{a.title}</CardTitle>
-                  {a.isPinned && <Badge variant="secondary">Pinned</Badge>}
-                  <Badge>{a.priority}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <p className="text-muted-foreground whitespace-pre-wrap">
-                  {a.content}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {a.author?.name ?? "System"} · {a.createdAt.toLocaleString()}
-                  {a.expiresAt && ` · Expires ${a.expiresAt.toLocaleDateString()}`}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <AnnouncementManager initial={serialized} />
     </div>
   );
 }
