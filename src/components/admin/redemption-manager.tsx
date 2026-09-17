@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Search, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { formatPoints } from "@/lib/utils";
 import { parseGcashNotes } from "@/lib/gcash-redemption";
 
@@ -25,6 +27,14 @@ const ACTIONS = [
 
 export function RedemptionManager({ initial }: { initial: Redemption[] }) {
   const [redemptions, setRedemptions] = useState(initial);
+  const [search, setSearch] = useState("");
+  const [selectedQr, setSelectedQr] = useState<string | null>(null);
+
+  const filteredRedemptions = redemptions.filter((redemption) => {
+    const query = search.trim().toLowerCase();
+    if (!query) return true;
+    return (redemption.user.name ?? redemption.user.email).toLowerCase().includes(query);
+  });
 
   function renderNotes(redemption: Redemption) {
     const parsed = parseGcashNotes(redemption.notes);
@@ -40,27 +50,9 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
           <span className="text-muted-foreground">GCash number:</span> {parsed.gcashNumber}
         </p>
         {parsed.qrImageUrl && (
-          <div className="space-y-2">
-            <div className="overflow-hidden rounded-lg border bg-white">
-              <img
-                src={parsed.qrImageUrl}
-                alt="GCash QR proof sent by resident"
-                className="max-h-72 min-h-40 w-full object-contain"
-                onError={(event) => {
-                  event.currentTarget.alt = "The submitted QR image could not be previewed";
-                  event.currentTarget.className = "hidden";
-                }}
-              />
-            </div>
-            <a
-              href={parsed.qrImageUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-block text-xs font-medium text-primary underline underline-offset-2"
-            >
-              Open QR image in a new tab
-            </a>
-          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => setSelectedQr(parsed.qrImageUrl)}>
+            View submitted QR
+          </Button>
         )}
       </div>
     );
@@ -98,13 +90,37 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
 
   return (
     <div className="space-y-3">
-      {redemptions.map((r) => (
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search resident name"
+          aria-label="Search resident name"
+          className="pl-9"
+        />
+      </div>
+
+      {filteredRedemptions.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            No redemption requests match this resident search.
+          </CardContent>
+        </Card>
+      ) : filteredRedemptions.map((r) => (
         <Card key={r.id}>
           <CardHeader className="pb-2">
             <div className="flex justify-between items-start gap-4">
-              <CardTitle className="text-base">
-                {r.reward.name === "10% Partner Discount" ? "Reward Redemption" : r.reward.name}
-              </CardTitle>
+              <div className="flex items-center gap-3">
+                {r.reward.name === "GCash Redemption" ? (
+                  <img src="/gcash.svg" alt="GCash" className="h-9 w-9 rounded-md object-contain" />
+                ) : r.reward.imageUrl ? (
+                  <img src={r.reward.imageUrl} alt="" className="h-9 w-9 rounded-md object-cover" />
+                ) : null}
+                <CardTitle className="text-base">
+                  {r.reward.name === "10% Partner Discount" ? "Reward Redemption" : r.reward.name}
+                </CardTitle>
+              </div>
               <Badge>{r.status}</Badge>
             </div>
           </CardHeader>
@@ -133,6 +149,30 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
           </CardContent>
         </Card>
       ))}
+
+      {selectedQr && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Submitted GCash QR code"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setSelectedQr(null)}
+        >
+          <div className="relative max-h-[90vh] max-w-xl rounded-xl bg-white p-4 shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Close QR viewer"
+              className="absolute right-2 top-2 bg-white"
+              onClick={() => setSelectedQr(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <img src={selectedQr} alt="GCash QR proof sent by resident" className="max-h-[82vh] w-full object-contain" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
