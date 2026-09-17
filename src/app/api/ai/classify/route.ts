@@ -9,8 +9,28 @@ import {
   isGeminiConfigured,
 } from "@/lib/gemini";
 import type { WasteType } from "@/generated/prisma/enums";
+import { z } from "zod";
 
-const CLASSIFY_PROMPT = `You are a waste classification expert for a Philippine community recycling program. Classify waste into one of: ${Object.keys(WASTE_TYPE_LABELS).join(", ")}. Respond ONLY with valid JSON: {"type":"PLASTIC","disposal":"...","estimatedPointsPerKg":10,"confidence":0.85,"tips":"..."}`;
+const CLASSIFY_PROMPT = `You are a waste classification expert for a Philippine community recycling program. Classify the item into exactly one of: ${Object.keys(WASTE_TYPE_LABELS).join(", ")}. Return ONLY a JSON object with exactly these fields: type (enum), material (short string), disposal (specific disposal instruction), estimatedPointsPerKg (number), confidence (number from 0 to 1), and tips (short practical tip). Do not include markdown or additional fields.`;
+
+const classificationSchema = z.object({
+  type: z.enum(["PLASTIC", "PAPER", "GLASS", "METAL", "ELECTRONICS", "ORGANIC", "TEXTILE", "HAZARDOUS", "OTHER"]),
+  material: z.string().min(1).max(120),
+  disposal: z.string().min(1).max(500),
+  estimatedPointsPerKg: z.number().nonnegative(),
+  confidence: z.number().min(0).max(1),
+  tips: z.string().min(1).max(500),
+});
+
+function parseClassification(content: string) {
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("Gemini returned an invalid classification response");
+  const parsed = classificationSchema.parse(JSON.parse(jsonMatch[0]));
+  return {
+    ...parsed,
+    typeLabel: WASTE_TYPE_LABELS[parsed.type as WasteType],
+  };
+}
 
 export async function POST(request: Request) {
   const authResult = await requireSession();
@@ -33,6 +53,7 @@ export async function POST(request: Request) {
         generationConfig: {
           maxOutputTokens: 400,
           temperature: 0.3,
+          responseMimeType: "application/json",
         },
       });
 
@@ -48,16 +69,7 @@ export async function POST(request: Request) {
         imagePart,
       ]);
 
-      const content = result.response.text();
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return NextResponse.json({
-          ...parsed,
-          typeLabel:
-            WASTE_TYPE_LABELS[parsed.type as WasteType] ?? parsed.type,
-        });
-      }
+      return NextResponse.json(parseClassification(result.response.text()));
     }
 
     if (isGeminiConfigured() && description && !imageUrl) {
@@ -67,6 +79,7 @@ export async function POST(request: Request) {
         generationConfig: {
           maxOutputTokens: 400,
           temperature: 0.3,
+          responseMimeType: "application/json",
         },
       });
 
@@ -75,16 +88,7 @@ export async function POST(request: Request) {
         { text: description },
       ]);
 
-      const content = result.response.text();
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return NextResponse.json({
-          ...parsed,
-          typeLabel:
-            WASTE_TYPE_LABELS[parsed.type as WasteType] ?? parsed.type,
-        });
-      }
+      return NextResponse.json(parseClassification(result.response.text()));
     }
 
     if (!isGeminiConfigured() && (imageUrl || imageData)) {

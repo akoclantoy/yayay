@@ -11,6 +11,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Camera, ScanLine } from "lucide-react";
 
 type Category = { id: string; name: string; pointsPerKg: number; type: string };
+type AiResult = {
+  type?: string;
+  typeLabel?: string;
+  confidence?: number;
+  disposal?: string;
+  tips?: string;
+  material?: string;
+};
 
 function RecordForm() {
   const searchParams = useSearchParams();
@@ -19,9 +27,11 @@ function RecordForm() {
   const [loading, setLoading] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [identifying, setIdentifying] = useState(false);
-  const [aiResult, setAiResult] = useState<{ typeLabel?: string; confidence?: number; tips?: string } | null>(null);
+  const [aiResult, setAiResult] = useState<AiResult | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const identifyingRef = useRef(false);
+  const identifyWasteRef = useRef<(() => Promise<void>) | null>(null);
   const [form, setForm] = useState({
     residentId: searchParams.get("residentId") ?? "",
     wasteCategoryId: "",
@@ -84,6 +94,7 @@ function RecordForm() {
     }
 
     setIdentifying(true);
+    identifyingRef.current = true;
     try {
       await new Promise<void>((resolve) => {
         if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
@@ -94,7 +105,7 @@ function RecordForm() {
       });
 
       const canvas = document.createElement("canvas");
-      const scale = Math.min(1, 1280 / video.videoWidth);
+      const scale = Math.min(1, 640 / video.videoWidth);
       canvas.width = Math.round(video.videoWidth * scale);
       canvas.height = Math.round(video.videoHeight * scale);
       canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -118,8 +129,23 @@ function RecordForm() {
       toast.error(error instanceof Error ? error.message : "AI identification failed");
     } finally {
       setIdentifying(false);
+      identifyingRef.current = false;
     }
   }
+
+  useEffect(() => {
+    identifyWasteRef.current = identifyWaste;
+  });
+
+  useEffect(() => {
+    if (!cameraActive) return;
+
+    const interval = window.setInterval(() => {
+      if (!identifyingRef.current) void identifyWasteRef.current?.();
+    }, 2000);
+
+    return () => window.clearInterval(interval);
+  }, [cameraActive]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -209,17 +235,35 @@ function RecordForm() {
               </div>
               {cameraActive && (
                 <>
-                  <video ref={videoRef} muted playsInline className="aspect-video w-full rounded-lg bg-black object-cover" />
+                  <div className="relative overflow-hidden rounded-lg bg-black">
+                    <video ref={videoRef} muted playsInline className="aspect-video w-full object-cover" />
+                    {aiResult && (
+                      <div className="absolute left-3 right-3 top-3 rounded-lg border border-white/20 bg-black/70 p-3 text-white backdrop-blur-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="rounded-full bg-primary px-3 py-1 text-sm font-semibold">
+                            {aiResult.typeLabel ?? "Unknown material"}
+                          </span>
+                          {typeof aiResult.confidence === "number" && (
+                            <span className="text-xs font-medium">
+                              {Math.round(aiResult.confidence * 100)}% confidence
+                            </span>
+                          )}
+                        </div>
+                        {aiResult.material && <p className="mt-2 text-xs">Material: {aiResult.material}</p>}
+                        {aiResult.disposal && <p className="mt-1 text-xs">Disposal: {aiResult.disposal}</p>}
+                      </div>
+                    )}
+                  </div>
                   <Button type="button" className="w-full" onClick={identifyWaste} disabled={identifying}>
                     <ScanLine className="mr-2 h-4 w-4" />
-                    {identifying ? "Identifying..." : "Identify trash"}
+                    {identifying ? "Analyzing frame..." : "Identify trash now"}
                   </Button>
                 </>
               )}
               {aiResult && (
                 <p className="text-sm text-muted-foreground">
                   AI result: <span className="font-medium text-foreground">{aiResult.typeLabel ?? "Unknown"}</span>
-                  {typeof aiResult.confidence === "number" && ` · ${Math.round(aiResult.confidence * 100)}% confidence`}
+                  {aiResult.tips && ` · ${aiResult.tips}`}
                 </p>
               )}
             </div>
