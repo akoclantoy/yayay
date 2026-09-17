@@ -3,13 +3,13 @@ import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { uploadImage } from "@/lib/cloudinary";
 import { db } from "@/lib/db";
+import { pointsToCurrency } from "@/lib/utils";
 
 const rewardSchema = z.object({
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().max(2000).optional().nullable(),
   type: z.enum(["VOUCHER", "CASH", "GIFT", "DISCOUNT", "BARANGAY_INCENTIVE"]),
   pointsCost: z.number().int().positive(),
-  cashValue: z.number().nonnegative().optional().nullable(),
   stock: z.number().int().nonnegative(),
   imageData: z.string().startsWith("data:image/").optional().nullable(),
 });
@@ -18,8 +18,12 @@ const updateSchema = rewardSchema.extend({ id: z.string().min(1) });
 
 async function imageUrlFromPayload(imageData: string | null | undefined) {
   if (!imageData) return undefined;
-  const uploaded = await uploadImage(imageData, "rewards");
-  return uploaded.url;
+  try {
+    const uploaded = await uploadImage(imageData, "rewards");
+    return uploaded.url;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function POST(request: Request) {
@@ -35,12 +39,17 @@ export async function POST(request: Request) {
         description: payload.description || null,
         type: payload.type,
         pointsCost: payload.pointsCost,
-        cashValue: payload.cashValue ?? null,
+        cashValue: pointsToCurrency(payload.pointsCost),
         stock: payload.stock,
         imageUrl: imageUrl ?? null,
       },
     });
-    return NextResponse.json(reward, { status: 201 });
+    return NextResponse.json({
+      ...reward,
+      warning: payload.imageData && !imageUrl
+        ? "Reward created, but the image could not be uploaded. Configure Cloudinary to store reward images."
+        : undefined,
+    }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.flatten() }, { status: 400 });
@@ -63,12 +72,17 @@ export async function PATCH(request: Request) {
         description: payload.description || null,
         type: payload.type,
         pointsCost: payload.pointsCost,
-        cashValue: payload.cashValue ?? null,
+        cashValue: pointsToCurrency(payload.pointsCost),
         stock: payload.stock,
         ...(imageUrl ? { imageUrl } : {}),
       },
     });
-    return NextResponse.json(reward);
+    return NextResponse.json({
+      ...reward,
+      warning: payload.imageData && !imageUrl
+        ? "Reward updated, but the new image could not be uploaded. Configure Cloudinary to store reward images."
+        : undefined,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.flatten() }, { status: 400 });

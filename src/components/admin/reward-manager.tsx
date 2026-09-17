@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { formatCurrency, pointsToCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,6 @@ type FormState = {
   description: string;
   type: RewardType;
   pointsCost: string;
-  cashValue: string;
   stock: string;
   imageData: string | null;
 };
@@ -35,7 +35,6 @@ const EMPTY_FORM: FormState = {
   description: "",
   type: "VOUCHER",
   pointsCost: "",
-  cashValue: "",
   stock: "0",
   imageData: null,
 };
@@ -54,7 +53,6 @@ function toForm(reward: Reward): FormState {
     description: reward.description ?? "",
     type: reward.type,
     pointsCost: String(reward.pointsCost),
-    cashValue: reward.cashValue === null ? "" : String(reward.cashValue),
     stock: String(reward.stock),
     imageData: null,
   };
@@ -106,7 +104,6 @@ export function RewardManager({ initial }: { initial: Reward[] }) {
         description: form.description || null,
         type: form.type,
         pointsCost: Number(form.pointsCost),
-        cashValue: form.cashValue ? Number(form.cashValue) : null,
         stock: Number(form.stock),
         imageData: form.imageData,
       };
@@ -121,7 +118,7 @@ export function RewardManager({ initial }: { initial: Reward[] }) {
       const saved: Reward = { ...data, redemptions: editingId ? rewards.find((r) => r.id === editingId)?.redemptions ?? 0 : 0 };
       setRewards((current) => editingId ? current.map((reward) => reward.id === saved.id ? saved : reward) : [saved, ...current]);
       resetForm();
-      toast.success(editingId ? "Reward updated" : "Reward created");
+      toast.success(data.warning ?? (editingId ? "Reward updated" : "Reward created"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to save reward");
     } finally {
@@ -158,7 +155,13 @@ export function RewardManager({ initial }: { initial: Reward[] }) {
             </select>
             <Input required type="number" min="1" step="1" placeholder="Points cost" value={form.pointsCost} onChange={(event) => updateForm("pointsCost", event.target.value)} />
             <Input required type="number" min="0" step="1" placeholder="Stock" value={form.stock} onChange={(event) => updateForm("stock", event.target.value)} />
-            <Input type="number" min="0" step="0.01" placeholder="Cash value (optional)" value={form.cashValue} onChange={(event) => updateForm("cashValue", event.target.value)} />
+            <Input
+              type="text"
+              readOnly
+              value={form.pointsCost ? formatCurrency(pointsToCurrency(Number(form.pointsCost))) : ""}
+              placeholder="Cash value calculated from points"
+              aria-label="Automatically calculated cash value"
+            />
             <Input type="file" accept="image/*" onChange={(event) => void chooseImage(event.target.files?.[0])} />
             <textarea className="min-h-24 rounded-xl border border-border/80 bg-white/80 px-4 py-3 text-sm sm:col-span-2 dark:bg-white/5" placeholder="Description (optional)" value={form.description} onChange={(event) => updateForm("description", event.target.value)} />
             {form.imageData && <img src={form.imageData} alt="Selected reward preview" className="h-24 w-24 rounded-lg object-cover" />}
