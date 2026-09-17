@@ -177,7 +177,15 @@ export function RewardManager({ initial }: { initial: Reward[] }) {
         {rewards.map((reward) => (
           <Card key={reward.id}>
             <CardContent className="space-y-3 pt-6">
-              {reward.imageUrl && <img src={reward.imageUrl} alt="" className="h-36 w-full rounded-lg object-cover" />}
+              <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted/40">
+                {reward.imageUrl ? (
+                  <img src={reward.imageUrl} alt={`${reward.name} reward`} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                    No image available
+                  </div>
+                )}
+              </div>
               <div>
                 <h2 className="font-semibold">{reward.name}</h2>
                 <p className="text-sm text-muted-foreground">{TYPE_LABELS[reward.type]}</p>
