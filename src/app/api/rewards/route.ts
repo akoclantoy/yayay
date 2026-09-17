@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { GCASH_REWARD_ID, getGcashRewardMetadata, sanitizeGcashNumber } from "@/lib/gcash-redemption";
 import { z } from "zod";
 import { MIN_GCASH_REDEMPTION_POINTS } from "@/lib/constants";
+import { currencyToPoints } from "@/lib/utils";
 
 async function ensureWallet(userId: string) {
   const existing = await db.rewardWallet.findUnique({ where: { residentId: userId } });
@@ -55,8 +56,9 @@ export async function GET() {
 const redeemSchema = z.object({
   rewardId: z.string().min(1).optional(),
   points: z.number().int().positive().optional(),
-}).refine((data) => data.rewardId || data.points, {
-  message: "A reward or points amount is required",
+  amount: z.number().positive().optional(),
+}).refine((data) => data.rewardId || data.points || data.amount, {
+  message: "A reward, points amount, or PHP amount is required",
 });
 
 const updateRedemptionSchema = z.object({
@@ -152,7 +154,18 @@ export async function POST(request: Request) {
       return NextResponse.json(redemption, { status: 201 });
     }
 
-    const { rewardId: standardRewardId, points: standardPoints } = redeemSchema.parse(payload);
+    const {
+      rewardId: standardRewardId,
+      points: standardPoints,
+      amount: standardAmount,
+    } = redeemSchema.parse(payload);
+    if (standardAmount !== undefined) {
+      const convertedPoints = currencyToPoints(standardAmount);
+      if (!Number.isInteger(convertedPoints) || convertedPoints <= 0 || Math.abs(standardAmount - convertedPoints * 0.05) > 0.001) {
+        return NextResponse.json({ error: "PHP amount must be in PHP 0.05 increments." }, { status: 400 });
+      }
+    }
+    const requestedPoints = standardPoints ?? (standardAmount !== undefined ? currencyToPoints(standardAmount) : undefined);
     const userId = authResult.session.user.id;
 
     const [requestedReward, wallet] = await Promise.all([
@@ -163,7 +176,7 @@ export async function POST(request: Request) {
               isActive: true,
               deletedAt: null,
               stock: { gt: 0 },
-              pointsCost: { lte: standardPoints },
+              pointsCost: { lte: requestedPoints },
             },
             orderBy: { pointsCost: "desc" },
           }),
@@ -178,7 +191,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Reward out of stock" }, { status: 400 });
     }
 
-    const redemptionPoints = standardPoints ?? requestedReward.pointsCost;
+    const redemptionPoints = requestedPoints ?? requestedReward.pointsCost;
     if (wallet.balance < redemptionPoints) {
       return NextResponse.json(
         {
