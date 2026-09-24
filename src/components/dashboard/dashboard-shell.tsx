@@ -29,6 +29,7 @@ import {
   Menu,
   X,
   ChevronLeft,
+  Search,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -87,6 +88,14 @@ const NAV_BY_ROLE: Record<UserRole, NavItem[]> = {
   GUEST: [],
 };
 
+const ROLE_CONTEXT: Record<UserRole, { label: string; eyebrow: string }> = {
+  RESIDENT: { label: "Resident portal", eyebrow: "Your sustainability journey" },
+  COLLECTION_STAFF: { label: "Operations portal", eyebrow: "Collection operations" },
+  BARANGAY_STAFF: { label: "Operations portal", eyebrow: "Barangay operations" },
+  ADMIN: { label: "Admin portal", eyebrow: "Platform control center" },
+  GUEST: { label: "EcoRewards", eyebrow: "Community recycling" },
+};
+
 export function DashboardShell({
   children,
   role,
@@ -99,6 +108,8 @@ export function DashboardShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const nav = NAV_BY_ROLE[role] ?? RESIDENT_NAV;
+  const context = ROLE_CONTEXT[role] ?? ROLE_CONTEXT.RESIDENT;
+  const activeItem = nav.find((item) => pathname === item.href || (item.href !== "/resident" && item.href !== "/staff" && item.href !== "/admin" && pathname.startsWith(item.href)));
 
   return (
     <div className="flex min-h-screen">
@@ -118,13 +129,16 @@ export function DashboardShell({
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="flex h-16 items-center justify-between px-4 border-b border-border/50">
+          <div className="flex h-20 items-center justify-between px-4 border-b border-border/70">
           {!collapsed && (
             <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                <Recycle className="h-4 w-4 text-primary" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20">
+                <Recycle className="h-4 w-4" />
               </div>
-              <span className="font-bold text-sm">{APP_NAME}</span>
+              <div>
+                <span className="font-bold text-sm tracking-tight">{APP_NAME}</span>
+                <span className="block text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{context.label}</span>
+              </div>
             </Link>
           )}
           <button
@@ -141,7 +155,7 @@ export function DashboardShell({
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1.5">
           {nav.map((item) => {
             const active =
               pathname === item.href ||
@@ -166,9 +180,9 @@ export function DashboardShell({
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
+                    "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
                     isActive
-                      ? "bg-primary/10 text-primary shadow-sm"
+                      ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
@@ -181,7 +195,7 @@ export function DashboardShell({
         </nav>
 
         <div className="p-3 border-t border-border/50">
-          <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
+          <div className={cn("flex items-center gap-3 rounded-xl bg-muted/60 p-2", collapsed && "justify-center bg-transparent p-0")}>
             <Avatar className="h-9 w-9">
               <AvatarImage src={session?.user?.image ?? undefined} />
               <AvatarFallback>{getInitials(session?.user?.name)}</AvatarFallback>
@@ -212,21 +226,38 @@ export function DashboardShell({
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/50 glass px-4 lg:px-6">
+        <header className="sticky top-0 z-30 flex min-h-20 items-center gap-4 border-b border-border/70 bg-background/85 px-4 backdrop-blur-xl lg:px-8">
           <button
             onClick={() => setMobileOpen(true)}
             className="lg:hidden flex h-9 w-9 items-center justify-center rounded-lg hover:bg-muted"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <div className="flex-1" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">{context.eyebrow}</p>
+            <p className="truncate text-sm font-semibold">{activeItem?.label ?? context.label}</p>
+          </div>
+          <Button variant="ghost" size="icon" className="hidden sm:inline-flex text-muted-foreground" aria-label="Search">
+            <Search />
+          </Button>
+          {role === "RESIDENT" && (
+            <Link href="/resident/notifications" aria-label="View notifications">
+              <Button variant="ghost" size="icon" className="text-muted-foreground">
+                <Bell />
+              </Button>
+            </Link>
+          )}
+          <div className="hidden sm:flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5">
+            <span className="h-2 w-2 rounded-full bg-accent" />
+            <span className="text-xs font-medium text-muted-foreground">Live</span>
+          </div>
         </header>
         <motion.main
           key={pathname}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-          className="flex-1 p-4 lg:p-6 overflow-auto"
+          className="flex-1 overflow-auto bg-gradient-to-b from-background to-muted/30 p-4 lg:p-8"
         >
           {children}
         </motion.main>

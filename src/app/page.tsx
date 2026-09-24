@@ -23,11 +23,11 @@ import { LandingFooter } from "@/components/landing/landing-footer";
 export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen">
-      <header className="sticky top-0 z-50 glass border-b border-white/20">
+      <header className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur-xl">
         <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-              <Recycle className="h-5 w-5 text-primary" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20">
+              <Recycle className="h-5 w-5" />
             </div>
             <span className="text-lg font-bold">{APP_NAME}</span>
           </Link>

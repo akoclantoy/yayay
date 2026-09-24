@@ -1,42 +1,42 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f4f7f2;
+  --foreground: #18322a;
   --card: #ffffff;
-  --card-foreground: #0f172a;
-  --primary: #16a34a;
+  --card-foreground: #18322a;
+  --primary: #176b4d;
   --primary-foreground: #ffffff;
-  --secondary: #10b981;
-  --secondary-foreground: #ffffff;
-  --accent: #84cc16;
-  --accent-foreground: #1a2e05;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #16a34a;
-  --danger: #ef4444;
-  --warning: #f59e0b;
-  --radius: 0.75rem;
+  --secondary: #e8b34b;
+  --secondary-foreground: #3c2a0b;
+  --accent: #8dbf45;
+  --accent-foreground: #18351a;
+  --muted: #e8eee8;
+  --muted-foreground: #60756b;
+  --border: #d7e2d8;
+  --input: #d7e2d8;
+  --ring: #176b4d;
+  --danger: #c94b4b;
+  --warning: #d99524;
+  --radius: 0.875rem;
 }
 
 .dark {
-  --background: #0b1120;
-  --foreground: #f1f5f9;
-  --card: #111827;
-  --card-foreground: #f1f5f9;
-  --primary: #22c55e;
-  --primary-foreground: #052e16;
-  --secondary: #10b981;
-  --secondary-foreground: #052e16;
-  --accent: #a3e635;
-  --accent-foreground: #1a2e05;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --border: #1e293b;
-  --input: #1e293b;
-  --ring: #22c55e;
+  --background: #10211b;
+  --foreground: #edf5ed;
+  --card: #173028;
+  --card-foreground: #edf5ed;
+  --primary: #63bd8d;
+  --primary-foreground: #0c2b1d;
+  --secondary: #e8b34b;
+  --secondary-foreground: #352607;
+  --accent: #a4d265;
+  --accent-foreground: #162d15;
+  --muted: #1d3a30;
+  --muted-foreground: #9ab2a4;
+  --border: #2b4a3d;
+  --input: #2b4a3d;
+  --ring: #63bd8d;
 }
 
 @theme inline {
@@ -67,7 +67,10 @@
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(141, 191, 69, 0.12), transparent 28rem),
+    radial-gradient(circle at 100% 20%, rgba(232, 179, 75, 0.1), transparent 24rem),
+    var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
@@ -85,14 +88,14 @@ body {
 
 .gradient-mesh {
   background:
-    radial-gradient(at 40% 20%, rgba(22, 163, 74, 0.15) 0px, transparent 50%),
-    radial-gradient(at 80% 0%, rgba(132, 204, 22, 0.12) 0px, transparent 50%),
-    radial-gradient(at 0% 50%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+    linear-gradient(rgba(23, 107, 77, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 107, 77, 0.035) 1px, transparent 1px),
     var(--background);
+  background-size: 32px 32px;
 }
 
 .text-gradient {
-  background: linear-gradient(135deg, #16a34a 0%, #10b981 50%, #84cc16 100%);
+  background: linear-gradient(135deg, #176b4d 0%, #3d9a67 55%, #8d9f39 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
