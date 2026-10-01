@@ -23,8 +23,8 @@ services:
         generateValue: true
       - key: AUTH_TRUST_HOST
         value: "true"
-      - key: NEXTAUTH_URL
-        value: https://yayay-8tut.onrender.com
+      # Set NEXTAUTH_URL in Render Dashboard to your public service URL, e.g. https://your-app.onrender.com.
+      # Do not hardcode a specific hostname in the repo; Render assigns the final domain at deploy time.
       # Set DATABASE_URL to a reachable public MySQL URL from Railway or another host that Render can access.
       # Do NOT use mysql.railway.internal from Render; it is not reachable from Render services.
       # Set in Render Dashboard → Environment (not committed):
