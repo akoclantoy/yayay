@@ -26,62 +26,54 @@ export async function GET() {
       currentMonth,
       previousMonth,
       verifiedRecords,
-      dailyRows,
+      recentRecords,
     ] =
       await Promise.all([
-      db.user.count({ where: { role: "RESIDENT", deletedAt: null } }),
-      db.recyclingRecord.aggregate({
-        where: { deletedAt: null, verified: true },
-        _sum: { weightKg: true, carbonSavedKg: true, pointsEarned: true },
-      }),
-      db.recyclingRecord.aggregate({
-        where: {
-          deletedAt: null,
-          verified: true,
-          collectionDate: { gte: monthStart, lt: nextMonthStart },
-        },
-        _sum: { weightKg: true },
-      }),
-      db.recyclingRecord.aggregate({
-        where: {
-          deletedAt: null,
-          verified: true,
-          collectionDate: { gte: previousMonthStart, lt: monthStart },
-        },
-        _sum: { weightKg: true },
-      }),
-      db.recyclingRecord.count({
-        where: { deletedAt: null, verified: true },
-      }),
-      db.$queryRaw<
-        Array<{
-          day: string;
-          material: string;
-          weightKg: number;
-          records: bigint;
-        }>
-      >`
-        SELECT
-          DATE_FORMAT(r.collectionDate, '%Y-%m-%d') AS day,
-          c.name AS material,
-          SUM(r.weightKg) AS weightKg,
-          COUNT(*) AS records
-        FROM RecyclingRecord r
-        INNER JOIN WasteCategory c ON c.id = r.wasteCategoryId
-        WHERE r.deletedAt IS NULL
-          AND r.verified = TRUE
-          AND r.collectionDate >= ${dailyStart}
-          AND r.collectionDate < ${dailyEnd}
-        GROUP BY DATE(r.collectionDate), c.id, c.name
-        ORDER BY DATE(r.collectionDate) ASC
-      `,
-    ]);
+        db.user.count({ where: { role: "RESIDENT", deletedAt: null } }),
+        db.recyclingRecord.aggregate({
+          where: { deletedAt: null, verified: true },
+          _sum: { weightKg: true, carbonSavedKg: true, pointsEarned: true },
+        }),
+        db.recyclingRecord.aggregate({
+          where: {
+            deletedAt: null,
+            verified: true,
+            collectionDate: { gte: monthStart, lt: nextMonthStart },
+          },
+          _sum: { weightKg: true },
+        }),
+        db.recyclingRecord.aggregate({
+          where: {
+            deletedAt: null,
+            verified: true,
+            collectionDate: { gte: previousMonthStart, lt: monthStart },
+          },
+          _sum: { weightKg: true },
+        }),
+        db.recyclingRecord.count({
+          where: { deletedAt: null, verified: true },
+        }),
+        db.recyclingRecord.findMany({
+          where: {
+            deletedAt: null,
+            verified: true,
+            collectionDate: { gte: dailyStart, lt: dailyEnd },
+          },
+          select: {
+            collectionDate: true,
+            weightKg: true,
+            wasteCategory: { select: { name: true } },
+          },
+          orderBy: { collectionDate: "asc" },
+        }),
+      ]);
 
     const materialTotals = new Map<string, number>();
-    for (const row of dailyRows) {
+    for (const record of recentRecords) {
+      const name = record.wasteCategory.name;
       materialTotals.set(
-        row.material,
-        (materialTotals.get(row.material) ?? 0) + Number(row.weightKg)
+        name,
+        (materialTotals.get(name) ?? 0) + record.weightKg
       );
     }
     const materials = [...materialTotals.entries()]
@@ -93,19 +85,20 @@ export async function GET() {
       string,
       { records: number; weights: Map<string, number> }
     >();
-    for (const row of dailyRows) {
-      const day = dailyTotals.get(row.day) ?? {
+    for (const record of recentRecords) {
+      const dayKey = record.collectionDate.toISOString().slice(0, 10);
+      const day = dailyTotals.get(dayKey) ?? {
         records: 0,
         weights: new Map<string, number>(),
       };
-      day.records += Number(row.records);
-      if (topMaterialNames.has(row.material)) {
+      day.records += 1;
+      if (topMaterialNames.has(record.wasteCategory.name)) {
         day.weights.set(
-          row.material,
-          (day.weights.get(row.material) ?? 0) + Number(row.weightKg)
+          record.wasteCategory.name,
+          (day.weights.get(record.wasteCategory.name) ?? 0) + record.weightKg
         );
       }
-      dailyTotals.set(row.day, day);
+      dailyTotals.set(dayKey, day);
     }
     const dailyImpact = Array.from({ length: 90 }, (_, index) => {
       const date = new Date(dailyStart);
@@ -142,7 +135,8 @@ export async function GET() {
     }, {
       headers: { "Cache-Control": "no-store" },
     });
-  } catch {
+  } catch (error) {
+    console.error("[public stats]", error);
     return NextResponse.json({ error: "Public statistics are temporarily unavailable." }, { status: 503 });
   }
 }

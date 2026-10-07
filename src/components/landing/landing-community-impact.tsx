@@ -317,10 +317,11 @@ export function LandingCommunityImpact() {
               {error}
             </p>
           ) : stats ? (
-            stats.verifiedRecords === 0 ? (
+            stats.verifiedRecords === 0 || stats.materials.length === 0 ? (
               <p className="flex min-h-64 items-center justify-center px-4 text-center text-sm text-[#94a3b8]">
-                No verified recycling records yet. Material trends will appear
-                here as collections are recorded.
+                {stats.verifiedRecords === 0
+                  ? "No verified recycling records yet. Material trends will appear here as collections are recorded."
+                  : "There are no verified collections in the last 90 days. New material trends will appear here when recycling is recorded."}
               </p>
             ) : (
               <ImpactChart stats={stats} />
