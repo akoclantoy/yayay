@@ -7,11 +7,25 @@ export async function GET() {
     const monthStart = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
     );
-    const nextMonthStart = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
-    );
     const previousMonthStart = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)
+    );
+    const currentMonthToDateEnd = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() + 1
+      )
+    );
+    const previousMonthDays = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)
+    ).getUTCDate();
+    const previousMonthComparableEnd = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth() - 1,
+        Math.min(now.getUTCDate(), previousMonthDays) + 1
+      )
     );
     const dailyStart = new Date(now);
     dailyStart.setUTCHours(0, 0, 0, 0);
@@ -25,6 +39,7 @@ export async function GET() {
       recycled,
       currentMonth,
       previousMonth,
+      averageResidentScore,
       verifiedRecords,
       recentRecords,
     ] =
@@ -38,7 +53,7 @@ export async function GET() {
           where: {
             deletedAt: null,
             verified: true,
-            collectionDate: { gte: monthStart, lt: nextMonthStart },
+            collectionDate: { gte: monthStart, lt: currentMonthToDateEnd },
           },
           _sum: { weightKg: true },
         }),
@@ -46,9 +61,16 @@ export async function GET() {
           where: {
             deletedAt: null,
             verified: true,
-            collectionDate: { gte: previousMonthStart, lt: monthStart },
+            collectionDate: {
+              gte: previousMonthStart,
+              lt: previousMonthComparableEnd,
+            },
           },
           _sum: { weightKg: true },
+        }),
+        db.residentProfile.aggregate({
+          where: { user: { deletedAt: null } },
+          _avg: { environmentalScore: true },
         }),
         db.recyclingRecord.count({
           where: { deletedAt: null, verified: true },
@@ -76,10 +98,10 @@ export async function GET() {
         (materialTotals.get(name) ?? 0) + record.weightKg
       );
     }
-    const materials = [...materialTotals.entries()]
+    const materialBreakdown = [...materialTotals.entries()]
       .sort((left, right) => right[1] - left[1])
-      .slice(0, 4)
       .map(([name, totalWeightKg]) => ({ name, totalWeightKg }));
+    const materials = materialBreakdown.slice(0, 4);
     const topMaterialNames = new Set(materials.map((material) => material.name));
     const dailyTotals = new Map<
       string,
@@ -128,10 +150,14 @@ export async function GET() {
       totalRecycledKg: recycled._sum.weightKg ?? 0,
       totalPoints: recycled._sum.pointsEarned ?? 0,
       carbonSavedKg: recycled._sum.carbonSavedKg ?? 0,
+      averageResidentScore: Math.round(
+        averageResidentScore._avg.environmentalScore ?? 0
+      ),
       monthlyChangePercent,
       verifiedRecords,
       dailyImpact,
       materials,
+      materialBreakdown,
     }, {
       headers: { "Cache-Control": "no-store" },
     });

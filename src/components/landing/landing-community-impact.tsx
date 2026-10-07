@@ -1,7 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Activity, BarChart3, Check, SlidersHorizontal } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  BadgeCheck,
+  Check,
+  Leaf,
+  Recycle,
+  Sparkles,
+  Users,
+} from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { formatPoints } from "@/lib/utils";
+
 type DailyImpact = {
   day: string;
   records: number;
@@ -15,225 +27,67 @@ type MaterialSeries = {
 
 type CommunityStats = {
   totalRecycledKg: number;
+  carbonSavedKg: number;
+  totalPoints: number;
   totalResidents: number;
+  averageResidentScore: number;
+  monthlyChangePercent: number | null;
   verifiedRecords: number;
   dailyImpact: DailyImpact[];
   materials: MaterialSeries[];
+  materialBreakdown: MaterialSeries[];
 };
 
-const colors = ["#35a7ff", "#1dd6b5", "#fb6d73", "#976cff"];
-const weightFormat = new Intl.NumberFormat("en-PH", {
-  maximumFractionDigits: 2,
+type ActivityBucket = {
+  startDay: string;
+  endDay: string;
+  weightKg: number;
+  records: number;
+};
+
+const numberFormat = new Intl.NumberFormat("en-PH", {
+  maximumFractionDigits: 0,
 });
-const chart = {
-  width: 1000,
-  height: 480,
-  left: 42,
-  top: 50,
-  plotRight: 790,
-  plotBottom: 340,
-  volumeTop: 365,
-  volumeBottom: 430,
-  profileRight: 982,
-};
 
-function ImpactChart({ stats }: { stats: CommunityStats }) {
-  const points = stats.dailyImpact;
-  const materials = stats.materials;
-  const plotWidth = chart.plotRight - chart.left;
-  const plotHeight = chart.plotBottom - chart.top;
-  const maxWeight = Math.max(
-    ...points.flatMap((point) => point.weights),
-    1
-  );
-  const maxRecords = Math.max(...points.map((point) => point.records), 1);
-  const xForIndex = (index: number) =>
-    chart.left + (index / Math.max(points.length - 1, 1)) * plotWidth;
-  const gridLines = Array.from({ length: 5 }, (_, index) => {
-    return chart.top + (index / 4) * plotHeight;
+const preciseNumberFormat = new Intl.NumberFormat("en-PH", {
+  maximumFractionDigits: 1,
+});
+
+function formatDate(day: string) {
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
   });
-  const monthLabels = points.reduce<Array<{ label: string; x: number }>>(
-    (labels, point, index) => {
-      const label = new Date(`${point.day}T00:00:00`).toLocaleDateString(
-        "en-PH",
-        { month: "short" }
-      );
-      if (labels.at(-1)?.label !== label) {
-        labels.push({ label, x: xForIndex(index) });
-      }
-      return labels;
-    },
-    []
-  );
-  const volumeBarWidth = Math.max(1.5, plotWidth / points.length - 1);
-  const maxMaterialWeight = Math.max(
-    ...materials.map((material) => material.totalWeightKg),
-    1
-  );
+}
 
-  return (
-    <svg
-      aria-label="Community recycling activity by material over the last 90 days"
-      className="block h-auto w-full"
-      role="img"
-      viewBox={`0 0 ${chart.width} ${chart.height}`}
-    >
-      <defs>
-        <linearGradient id="impact-chart-fill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#2476e8" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#10182a" stopOpacity="0" />
-        </linearGradient>
-      </defs>
+function groupActivityByNineDays(days: DailyImpact[]): ActivityBucket[] {
+  const buckets: ActivityBucket[] = [];
 
-      {gridLines.map((y) => (
-        <line
-          key={y}
-          x1={chart.left}
-          x2={chart.plotRight}
-          y1={y}
-          y2={y}
-          stroke="#202c40"
-          strokeWidth="1"
-        />
-      ))}
-      {Array.from({ length: 12 }, (_, index) => {
-        const x = chart.left + (index / 11) * plotWidth;
-        return (
-          <line
-            key={x}
-            x1={x}
-            x2={x}
-            y1={chart.top}
-            y2={chart.volumeBottom}
-            stroke="#182337"
-            strokeWidth="1"
-          />
-        );
-      })}
+  for (let index = 0; index < days.length; index += 9) {
+    const group = days.slice(index, index + 9);
+    if (group.length === 0) continue;
 
-      <line
-        x1={chart.plotRight + 15}
-        x2={chart.plotRight + 15}
-        y1={chart.top}
-        y2={chart.volumeBottom}
-        stroke="#344158"
-        strokeWidth="1"
-      />
+    buckets.push({
+      startDay: group[0].day,
+      endDay: group[group.length - 1].day,
+      weightKg: group.reduce(
+        (total, day) =>
+          total + day.weights.reduce((daily, weight) => daily + weight, 0),
+        0
+      ),
+      records: group.reduce((total, day) => total + day.records, 0),
+    });
+  }
 
-      {points.map((point, index) => {
-        const height = (point.records / maxRecords) * (chart.volumeBottom - chart.volumeTop);
-        const previous = points[index - 1];
-        const isUpDay = !previous || point.records >= previous.records;
-        return (
-          <rect
-            key={`volume-${point.day}`}
-            x={xForIndex(index) - volumeBarWidth / 2}
-            y={chart.volumeBottom - height}
-            width={volumeBarWidth}
-            height={height}
-            fill={isUpDay ? "#1a9e78" : "#d55362"}
-            opacity="0.72"
-          >
-            <title>
-              {point.day}: {point.records} verified{" "}
-              {point.records === 1 ? "collection" : "collections"}
-            </title>
-          </rect>
-        );
-      })}
+  return buckets;
+}
 
-      {materials.map((material, seriesIndex) => {
-        const color = colors[seriesIndex % colors.length];
-        const linePoints = points
-          .map((point, index) => {
-            const weight = point.weights[seriesIndex] ?? 0;
-            const x = xForIndex(index);
-            const y =
-              chart.plotBottom - (weight / maxWeight) * plotHeight;
-            return `${x},${y}`;
-          })
-          .join(" ");
-        const firstX = xForIndex(0);
-        const lastX = xForIndex(points.length - 1);
-        const firstY =
-          chart.plotBottom -
-          ((points[0]?.weights[seriesIndex] ?? 0) / maxWeight) * plotHeight;
-        const lastY =
-          chart.plotBottom -
-          ((points.at(-1)?.weights[seriesIndex] ?? 0) / maxWeight) * plotHeight;
-
-        return (
-          <g key={material.name}>
-            <polygon
-              points={`${firstX},${chart.plotBottom} ${linePoints} ${lastX},${chart.plotBottom}`}
-              fill="url(#impact-chart-fill)"
-              opacity={seriesIndex === 0 ? 1 : 0}
-            />
-            <polyline
-              fill="none"
-              points={linePoints}
-              stroke={color}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeOpacity="0.9"
-              strokeWidth="1.8"
-              vectorEffect="non-scaling-stroke"
-            >
-              <title>
-                {material.name}: {weightFormat.format(material.totalWeightKg)} kg over
-                the last 90 days
-              </title>
-            </polyline>
-            <circle cx={lastX} cy={lastY} fill={color} r="2.5" />
-          </g>
-        );
-      })}
-
-      {materials.map((material, index) => {
-        const y = chart.top + 14 + index * 31;
-        const width =
-          (material.totalWeightKg / maxMaterialWeight) * (chart.profileRight - chart.plotRight - 34);
-        return (
-          <g key={`profile-${material.name}`}>
-            <rect
-              x={chart.plotRight + 24}
-              y={y}
-              width={chart.profileRight - chart.plotRight - 34}
-              height="7"
-              rx="2"
-              fill="#1b2638"
-            />
-            <rect
-              x={chart.profileRight - 10 - width}
-              y={y}
-              width={width}
-              height="7"
-              rx="2"
-              fill={colors[index % colors.length]}
-              opacity="0.85"
-            >
-              <title>
-                {material.name}: {weightFormat.format(material.totalWeightKg)} kg
-              </title>
-            </rect>
-          </g>
-        );
-      })}
-
-      {monthLabels.map((month, index) => (
-        <text
-          key={`${month.label}-${index}`}
-          x={month.x}
-          y="462"
-          fill="#8290a6"
-          fontSize="13"
-          textAnchor="middle"
-        >
-          {month.label}
-        </text>
-      ))}
-    </svg>
-  );
+function monthChangeLabel(change: number | null) {
+  if (change === null) return "No previous-month activity to compare yet";
+  if (change === 0) return "No change from the same period last month";
+  const direction = change > 0 ? "more" : "less";
+  return `${preciseNumberFormat.format(Math.abs(change))}% ${direction} than the same period last month`;
 }
 
 export function LandingCommunityImpact() {
@@ -266,93 +120,280 @@ export function LandingCommunityImpact() {
     return () => controller.abort();
   }, []);
 
+  const activity = useMemo(
+    () => groupActivityByNineDays(stats?.dailyImpact ?? []),
+    [stats]
+  );
+  const maxActivity = Math.max(
+    ...activity.map((bucket) => bucket.weightKg),
+    1
+  );
+  const monthlyChange = stats?.monthlyChangePercent ?? 0;
+
+  const detailCards = [
+    {
+      icon: Leaf,
+      label: "Carbon emissions avoided",
+      value: stats
+        ? `${preciseNumberFormat.format(stats.carbonSavedKg)} kg`
+        : "—",
+      detail:
+        "Estimated CO₂ savings calculated from each material’s recorded carbon factor.",
+    },
+    {
+      icon: BadgeCheck,
+      label: "Verified collections",
+      value: stats ? formatPoints(stats.verifiedRecords) : "—",
+      detail:
+        "Recycling records confirmed by collection staff and included in the impact totals.",
+    },
+    {
+      icon: Recycle,
+      label: "Reward points earned",
+      value: stats ? formatPoints(stats.totalPoints) : "—",
+      detail:
+        "Points awarded to residents for the verified materials they recycled.",
+    },
+    {
+      icon: Users,
+      label: "Residents in the program",
+      value: stats ? formatPoints(stats.totalResidents) : "—",
+      detail:
+        "Residents with an account in EcoRewards; this is not limited to recent recyclers.",
+    },
+  ];
+
   return (
     <section id="impact" className="px-4 py-20 sm:py-24">
-      <div className="container mx-auto max-w-6xl">
-        <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              Community impact
+      <div className="container mx-auto max-w-5xl">
+        <header className="mb-9 text-center sm:mb-11">
+          <p className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-primary">
+            Real records. Shared progress.
+          </p>
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Community impact
+          </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
+            See how much verified recycling our community has collected, how
+            activity is changing, and the environmental benefits those records
+            represent.
+          </p>
+        </header>
+
+        <div className="relative mb-12 px-0 pb-5 sm:px-7">
+          <article
+            aria-labelledby="community-impact-total"
+            className="relative isolate h-[355px] overflow-hidden rounded-[24px] bg-[#153f32] px-6 pb-7 pt-7 text-white shadow-[0_24px_70px_-35px_rgba(13,50,37,0.55)] sm:h-[380px] sm:px-8 sm:pt-8"
+          >
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-[38px] -top-[116px] h-[250px] w-[250px] rounded-full border-[22px] border-[#d7e4dc]"
+            />
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute right-5 top-6 z-10 flex h-11 w-11 items-center justify-center rounded-[15px] bg-[#f0b943] text-[#382807] sm:right-8 sm:top-8"
+            >
+              <Sparkles className="h-5 w-5" strokeWidth={1.8} />
+            </div>
+
+            <div className="relative z-10">
+              <p className="text-sm font-medium text-[#c1d7ce]">
+                Total community recycling
+              </p>
+              <h3
+                className="mt-1 text-[34px] font-semibold leading-tight tracking-tight sm:text-[38px]"
+                id="community-impact-total"
+              >
+                {error
+                  ? "Data unavailable"
+                  : stats
+                    ? `${numberFormat.format(stats.totalRecycledKg)} kg`
+                    : "Loading impact…"}
+              </h3>
+              {error ? (
+                <p aria-live="polite" className="mt-1 text-sm text-rose-200">
+                  {error}
+                </p>
+              ) : (
+                <p
+                  className={`mt-1 flex max-w-[75%] items-center gap-1 text-sm font-medium ${
+                    monthlyChange < 0
+                      ? "text-[#ffd0ca]"
+                      : "text-[#c6eb83]"
+                  }`}
+                  title="Compares this month so far with the same number of days from last month."
+                >
+                  {stats?.monthlyChangePercent === null ? (
+                    <Check className="h-4 w-4 shrink-0" />
+                  ) : monthlyChange < 0 ? (
+                    <ArrowDownRight className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <ArrowUpRight className="h-4 w-4 shrink-0" />
+                  )}
+                  <span>
+                    {stats
+                      ? monthChangeLabel(stats.monthlyChangePercent)
+                      : "Month-to-date comparison"}
+                  </span>
+                </p>
+              )}
+            </div>
+
+            {stats &&
+            stats.verifiedRecords > 0 &&
+            stats.materials.length > 0 ? (
+              <>
+                <div
+                  aria-label="Verified recycling weight in ten consecutive nine-day periods"
+                  className="absolute inset-x-6 bottom-[82px] flex h-[118px] items-end gap-2 border-b border-[#c1d7ce]/90 sm:inset-x-8 sm:gap-2.5"
+                  role="img"
+                >
+                  {activity.map((bucket, index) => (
+                    <div
+                      key={bucket.startDay}
+                      aria-label={`${formatDate(bucket.startDay)} to ${formatDate(bucket.endDay)}: ${preciseNumberFormat.format(bucket.weightKg)} kilograms in ${bucket.records} verified collections`}
+                      className="min-w-0 flex-1 rounded-t-[6px] bg-[#86b440] transition-colors hover:bg-[#a1ce56]"
+                      style={{
+                        height: `${Math.max(
+                          (bucket.weightKg / maxActivity) * 100,
+                          bucket.weightKg > 0 ? 8 : 0
+                        )}%`,
+                        opacity: 0.5 + (index / Math.max(activity.length - 1, 1)) * 0.5,
+                      }}
+                      title={`${formatDate(bucket.startDay)}–${formatDate(bucket.endDay)}: ${preciseNumberFormat.format(bucket.weightKg)} kg recycled · ${bucket.records} verified collections`}
+                    />
+                  ))}
+                </div>
+                <p className="absolute bottom-[61px] left-6 text-[10px] text-[#c1d7ce]/80 sm:left-8">
+                  Each bar = 9 days · hover a bar for its total
+                </p>
+              </>
+            ) : (
+              <div className="absolute inset-x-6 bottom-[82px] flex h-[118px] items-center justify-center rounded-xl border border-dashed border-[#c1d7ce]/40 px-4 text-center text-sm text-[#d0e0d8] sm:inset-x-8">
+                {error
+                  ? "Recycling activity could not be loaded. Please try again later."
+                  : stats?.verifiedRecords
+                    ? "No verified recycling collections were recorded in the last 90 days."
+                    : "No verified recycling collections have been recorded yet."}
+              </div>
+            )}
+
+            <div className="absolute bottom-7 right-6 flex items-center gap-2 text-sm font-semibold sm:right-8">
+              <Check className="h-[17px] w-[17px] text-[#c6eb83]" />
+              <span>Verified collections</span>
+              {stats && (
+                <span className="text-[#c1d7ce]">
+                  {formatPoints(stats.verifiedRecords)}
+                </span>
+              )}
+            </div>
+          </article>
+
+          <div className="absolute bottom-0 left-[-3px] z-20 rounded-tr-[20px] bg-white px-4 pb-3 pt-3 text-[#153f32] shadow-[8px_-5px_22px_-18px_rgba(13,50,37,0.65)] dark:bg-[#173028] dark:text-[#edf5ed] sm:left-0">
+            <p className="text-xs font-medium text-[#60756b] dark:text-[#9ab2a4]">
+              Average resident score
             </p>
-            <h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
-              {stats
-                ? `${weightFormat.format(stats.totalRecycledKg)} kg`
-                : error
-                  ? "Impact data unavailable"
-                  : "Loading community data"}
-            </h2>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Check className="h-4 w-4 text-emerald-600" />
-            <span>
-              {stats
-                ? `${stats.verifiedRecords.toLocaleString("en-PH")} verified collections`
-                : "Verified recycling activity"}
-            </span>
+            <p className="mt-1 text-lg font-bold leading-none">
+              {stats ? formatPoints(stats.averageResidentScore) : "—"}
+              <span className="ml-1 text-xs font-medium text-[#60756b] dark:text-[#9ab2a4]">
+                / 1000
+              </span>
+            </p>
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-[#202b3d] bg-[#0b1220] p-2 shadow-[0_24px_70px_-38px_rgba(9,16,32,0.8)] sm:p-4">
-          <div className="mb-1 flex items-center justify-between px-2 pt-1">
-            <div className="flex items-center gap-1.5 text-[#8491a6]">
-              <Activity className="h-3.5 w-3.5" />
-              <span className="text-[11px] font-medium">Last 90 days</span>
-            </div>
-            <div className="flex items-center gap-1">
-              {[BarChart3, SlidersHorizontal].map((Icon, index) => (
-                <span
-                  key={index}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-[#8491a6]"
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                </span>
-              ))}
-            </div>
-          </div>
-          {error ? (
-            <p
-              aria-live="polite"
-              className="flex min-h-64 items-center justify-center px-4 text-sm text-rose-300"
-            >
-              {error}
+        <section aria-labelledby="impact-details-title" className="space-y-6">
+          <div>
+            <h3 className="text-xl font-semibold" id="impact-details-title">
+              What these numbers mean
+            </h3>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              These totals come from verified, non-deleted recycling records.
+              Carbon savings use the saved estimate for each waste category.
             </p>
-          ) : stats ? (
-            stats.verifiedRecords === 0 || stats.materials.length === 0 ? (
-              <p className="flex min-h-64 items-center justify-center px-4 text-center text-sm text-[#94a3b8]">
-                {stats.verifiedRecords === 0
-                  ? "No verified recycling records yet. Material trends will appear here as collections are recorded."
-                  : "There are no verified collections in the last 90 days. New material trends will appear here when recycling is recorded."}
-              </p>
-            ) : (
-              <ImpactChart stats={stats} />
-            )
-          ) : (
-            <div
-              aria-label="Loading community recycling data"
-              className="aspect-[2/1] min-h-64 animate-pulse rounded-lg bg-[#111b2b]"
-              role="status"
-            />
-          )}
-          {stats && stats.verifiedRecords > 0 && (
-            <div className="flex flex-wrap gap-x-4 gap-y-1 px-2 pb-1 pt-2">
-              {stats.materials.map((material, index) => (
-                <span
-                  key={material.name}
-                  className="inline-flex items-center gap-1.5 text-[11px] text-[#94a3b8]"
-                >
-                  <span
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ backgroundColor: colors[index % colors.length] }}
-                  />
-                  {material.name}
-                </span>
-              ))}
-              <span className="text-[11px] text-[#64748b]">
-                {stats.totalResidents.toLocaleString("en-PH")} residents
-              </span>
-            </div>
-          )}
-        </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {detailCards.map((item) => (
+              <Card key={item.label} className="h-full">
+                <CardContent className="flex gap-4 p-5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                    <item.icon className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{item.label}</p>
+                    <p className="mt-1 text-2xl font-bold text-gradient">
+                      {item.value}
+                    </p>
+                    <p className="mt-2 text-sm leading-5 text-muted-foreground">
+                      {item.detail}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <Card>
+            <CardContent className="p-5 sm:p-6">
+              <div className="mb-4">
+                <h3 className="font-semibold">Recycling by material</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Weight collected for each material over the last 90 days.
+                  Percentages show each material&apos;s share of the period&apos;s
+                  total.
+                </p>
+              </div>
+              {stats?.materialBreakdown.length ? (
+                <div className="space-y-4">
+                  {stats.materialBreakdown.map((material, index) => {
+                    const totalRecentWeight = stats.materialBreakdown.reduce(
+                      (total, item) => total + item.totalWeightKg,
+                      0
+                    );
+                    const share =
+                      totalRecentWeight > 0
+                        ? (material.totalWeightKg / totalRecentWeight) * 100
+                        : 0;
+
+                    return (
+                      <div key={material.name}>
+                        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <span className="font-medium">{material.name}</span>
+                          <span className="text-muted-foreground">
+                            {preciseNumberFormat.format(material.totalWeightKg)}{" "}
+                            kg · {share.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div
+                          aria-label={`${material.name}: ${share.toFixed(1)} percent of recent recycling weight`}
+                          className="h-2 overflow-hidden rounded-full bg-muted"
+                          role="img"
+                        >
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${share}%`,
+                              backgroundColor:
+                                ["#35a7ff", "#1dd6b5", "#fb6d73", "#976cff"][
+                                  index % 4
+                                ],
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                  Material breakdown will appear after verified recycling is
+                  recorded in the last 90 days.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </section>
       </div>
     </section>
   );
