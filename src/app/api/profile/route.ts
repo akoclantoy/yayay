@@ -18,6 +18,17 @@ export async function PATCH(request: Request) {
   try {
     const data = schema.parse(await request.json());
     const userId = authResult.session.user.id;
+    const barangayId = data.barangayId || null;
+
+    if (barangayId) {
+      const barangay = await db.barangay.findFirst({
+        where: { id: barangayId, isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      if (!barangay) {
+        return NextResponse.json({ error: "Select an active barangay" }, { status: 400 });
+      }
+    }
 
     if (data.name || data.phone) {
       await db.user.update({
@@ -34,13 +45,13 @@ export async function PATCH(request: Request) {
       update: {
         address: data.address,
         houseNumber: data.houseNumber,
-        barangayId: data.barangayId || null,
+        barangayId,
       },
       create: {
         userId,
         address: data.address,
         houseNumber: data.houseNumber,
-        barangayId: data.barangayId || null,
+        barangayId,
       },
     });
 

@@ -20,7 +20,6 @@ export default async function LeaderboardPage() {
     }),
     db.barangay.findMany({
       where: { isActive: true, deletedAt: null },
-      take: 10,
       include: {
         residents: {
           select: { totalWeightKg: true },
@@ -36,7 +35,8 @@ export default async function LeaderboardPage() {
       totalKg: b.residents.reduce((sum, r) => sum + r.totalWeightKg, 0),
       residents: b.residents.length,
     }))
-    .sort((a, b) => b.totalKg - a.totalKg);
+    .sort((a, b) => b.totalKg - a.totalKg)
+    .slice(0, 10);
 
   const myRank =
     topResidents.findIndex((r) => r.userId === session.user!.id) + 1;

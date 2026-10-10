@@ -38,10 +38,11 @@ export function ProfileForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error("Update failed");
-      toast.success("Profile updated!");
-    } catch {
-      toast.error("Failed to update profile");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Update failed");
+      toast.success("Profile updated", { description: "Your barangay and resident details are saved." });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update profile");
     } finally {
       setLoading(false);
     }
@@ -51,7 +52,7 @@ export function ProfileForm({
     <div className="space-y-6 max-w-2xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold">Profile Settings</h1>
-        <p className="text-muted-foreground">Manage your account information</p>
+        <p className="text-muted-foreground">Keep your contact and community details up to date.</p>
       </div>
 
       <Card>
@@ -83,7 +84,7 @@ export function ProfileForm({
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
               />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label htmlFor="barangay">Barangay</Label>
               <select
                 id="barangay"
@@ -96,8 +97,9 @@ export function ProfileForm({
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
+              <p className="text-xs text-muted-foreground">Your barangay contributes to the Top Barangays community ranking.</p>
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label htmlFor="house">House number</Label>
               <Input
                 id="house"
@@ -105,7 +107,7 @@ export function ProfileForm({
                 onChange={(e) => setForm({ ...form, houseNumber: e.target.value })}
               />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label htmlFor="address">Address</Label>
               <Input
                 id="address"

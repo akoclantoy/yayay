@@ -192,11 +192,6 @@ export default async function ResidentDashboardPage() {
                   Request pickup
                 </Button>
               </Link>
-              <Link href="/resident/assistant" className="block">
-                <Button variant="outline" className="w-full justify-start">
-                  Ask AI assistant
-                </Button>
-              </Link>
             </CardContent>
           </Card>
         </div>

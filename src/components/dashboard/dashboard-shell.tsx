@@ -16,7 +16,6 @@ import {
   Trophy,
   Award,
   Leaf,
-  Bot,
   Bell,
   User,
   QrCode,
@@ -52,7 +51,6 @@ const RESIDENT_NAV: NavItem[] = [
   { href: "/resident/leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/resident/badges", label: "Badges", icon: Award },
   { href: "/resident/impact", label: "Environmental Impact", icon: Leaf },
-  { href: "/resident/assistant", label: "AI Assistant", icon: Bot },
   { href: "/resident/notifications", label: "Notifications", icon: Bell },
   { href: "/resident/profile", label: "Profile", icon: User },
 ];
@@ -73,6 +71,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/centers", label: "Collection Centers", icon: MapPin },
   { href: "/admin/waste", label: "Waste Categories", icon: Recycle },
   { href: "/admin/rewards", label: "Rewards", icon: Gift },
+  { href: "/admin/badges", label: "Badges & bonuses", icon: Award },
   { href: "/admin/pickups", label: "Pickup Requests", icon: Truck },
   { href: "/admin/redemptions", label: "Redemptions", icon: Wallet },
   { href: "/admin/announcements", label: "Announcements", icon: Bell },
