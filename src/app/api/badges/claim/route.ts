@@ -13,28 +13,32 @@ export async function POST(request: Request) {
   try {
     const { badgeId } = claimSchema.parse(await request.json());
     const userId = authResult.session.user.id;
-    await syncWeightMilestoneBadges(userId);
+    const totalWeightKg = await syncWeightMilestoneBadges(userId);
+    const badge = await db.badge.findUnique({
+      where: { id: badgeId },
+      select: { name: true, targetWeightKg: true },
+    });
+    if (!badge) {
+      return NextResponse.json({ error: "Badge not found" }, { status: 404 });
+    }
+    if (
+      badge.targetWeightKg !== null &&
+      totalWeightKg < badge.targetWeightKg
+    ) {
+      return NextResponse.json(
+        {
+          error: `Recycle ${badge.targetWeightKg.toLocaleString()} kg of verified materials to unlock this bonus`,
+        },
+        { status: 403 }
+      );
+    }
+
     const earnedBadge = await db.userBadge.findUnique({
       where: { userId_badgeId: { userId, badgeId } },
       include: { badge: true },
     });
 
     if (!earnedBadge) {
-      const badge = await db.badge.findUnique({
-        where: { id: badgeId },
-        select: { name: true, targetWeightKg: true },
-      });
-      if (!badge) {
-        return NextResponse.json({ error: "Badge not found" }, { status: 404 });
-      }
-      if (badge.targetWeightKg !== null) {
-        return NextResponse.json(
-          {
-            error: `Recycle ${badge.targetWeightKg.toLocaleString()} kg of verified materials to earn this badge`,
-          },
-          { status: 403 }
-        );
-      }
       return NextResponse.json({ error: "You have not earned this badge" }, { status: 404 });
     }
     if (earnedBadge.claimedAt) {

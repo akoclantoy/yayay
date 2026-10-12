@@ -35,16 +35,18 @@ export function BadgeCollection({
 }) {
   const [badges, setBadges] = useState(initialBadges);
   const [claiming, setClaiming] = useState<string | null>(null);
-  const earnedCount = badges.filter((badge) =>
-    badge.earnedAt ||
-    (badge.targetWeightKg !== null && totalWeightKg >= badge.targetWeightKg)
-  ).length;
-  const claimablePoints = badges.reduce((total, badge) => {
-    const unlocked =
-      Boolean(badge.earnedAt) ||
-      (badge.targetWeightKg !== null && totalWeightKg >= badge.targetWeightKg);
-    return total + (unlocked && !badge.claimedAt ? badge.points : 0);
-  }, 0);
+  function isUnlocked(badge: BadgeEntry) {
+    return badge.targetWeightKg !== null
+      ? totalWeightKg >= badge.targetWeightKg
+      : Boolean(badge.earnedAt);
+  }
+
+  const earnedCount = badges.filter(isUnlocked).length;
+  const claimablePoints = badges.reduce(
+    (total, badge) =>
+      total + (isUnlocked(badge) && !badge.claimedAt ? badge.points : 0),
+    0
+  );
 
   async function claimBonus(badgeId: string) {
     setClaiming(badgeId);
@@ -100,7 +102,7 @@ export function BadgeCollection({
             const reachedMilestone =
               badge.targetWeightKg !== null &&
               totalWeightKg >= badge.targetWeightKg;
-            const earned = Boolean(badge.earnedAt) || reachedMilestone;
+            const earned = isUnlocked(badge);
             const claimed = Boolean(badge.claimedAt);
             const targetWeightKg = badge.targetWeightKg;
             const progress = targetWeightKg
@@ -111,7 +113,16 @@ export function BadgeCollection({
                 <CardContent className="flex h-full flex-col p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className={`flex h-14 w-14 items-center justify-center rounded-2xl text-3xl ${earned ? "bg-emerald-700/10" : "bg-muted grayscale"}`}>{badge.icon ?? "🏅"}</div>
-                    {earned ? <Badge variant="success">Earned</Badge> : <LockKeyhole className="mt-1 h-4 w-4 text-muted-foreground" aria-label="Not yet earned" />}
+                    {earned ? (
+                      <Badge variant="success">
+                        {badge.targetWeightKg !== null ? "Bonus unlocked" : "Earned"}
+                      </Badge>
+                    ) : (
+                      <LockKeyhole
+                        className="mt-1 h-4 w-4 text-muted-foreground"
+                        aria-label="Not yet earned"
+                      />
+                    )}
                   </div>
                   <h2 className="mt-4 font-semibold">{badge.name}</h2>
                   {badge.description && (
@@ -128,7 +139,9 @@ export function BadgeCollection({
                   {targetWeightKg !== null ? (
                     <div className="mt-4 space-y-1.5">
                       <div className="flex justify-between gap-3 text-xs">
-                        <span className="font-medium">Lifetime recycling target</span>
+                        <span className="font-medium">
+                          Reach {targetWeightKg.toLocaleString()} kg to unlock bonus
+                        </span>
                         <span className="text-muted-foreground">
                           {Math.min(totalWeightKg, targetWeightKg).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                           {" / "}
@@ -148,7 +161,11 @@ export function BadgeCollection({
                           style={{ width: `${progress}%` }}
                         />
                       </div>
-                      {!reachedMilestone && (
+                      {reachedMilestone ? (
+                        <p className="text-xs font-medium text-emerald-700">
+                          Bonus unlocked — claim it below
+                        </p>
+                      ) : (
                         <p className="text-xs text-muted-foreground">
                           {(targetWeightKg - totalWeightKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} kg more to earn this badge
                         </p>
