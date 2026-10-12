@@ -28,7 +28,6 @@ import {
   Menu,
   X,
   ChevronLeft,
-  Search,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -235,9 +234,6 @@ export function DashboardShell({
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">{context.eyebrow}</p>
             <p className="truncate text-sm font-semibold">{activeItem?.label ?? context.label}</p>
           </div>
-          <Button variant="ghost" size="icon" className="hidden sm:inline-flex text-muted-foreground" aria-label="Search">
-            <Search />
-          </Button>
           {role === "RESIDENT" && (
             <Link href="/resident/notifications" aria-label="View notifications">
               <Button variant="ghost" size="icon" className="text-muted-foreground">
