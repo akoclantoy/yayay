@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/api-auth";
 import {
   GEMINI_CHAT_MODEL,
   dataUrlAsInlineData,
+  generateWithChatModelFallback,
   getGeminiClient,
   isGeminiConfigured,
 } from "@/lib/gemini";
@@ -47,6 +48,7 @@ If hazardous or electronic material may be present, explicitly recommend careful
 Return only valid JSON with exactly these keys: answer (concise helpful response), suggestion (null or an object containing type, material, disposal, confidence from 0 to 1).`;
 
 function getGeminiFailure(
+  model: string,
   status: number | undefined,
   error: unknown,
   receivedResponse: boolean
@@ -58,7 +60,7 @@ function getGeminiFailure(
     return "Gemini rejected the API key or its permissions. Check the GEMINI_API_KEY value and API restrictions in Render and Google AI Studio.";
   }
   if (status === 404) {
-    return `Gemini model "${GEMINI_CHAT_MODEL}" was not found. Set GEMINI_CHAT_MODEL in Render to a model enabled for your API key.`;
+    return `Gemini model "${model}" was not found. Check that this model is available to the API key configured in Render.`;
   }
   if (status === 429) {
     return "Gemini quota or rate limit reached. Check the API key's billing and quota in Google AI Studio, then try again.";
@@ -91,6 +93,7 @@ export async function POST(request: Request) {
 
   let body: unknown;
   let receivedResponse = false;
+  let activeModel = GEMINI_CHAT_MODEL;
   try {
     body = await request.json();
   } catch {
@@ -127,16 +130,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Gemini is not configured." }, { status: 503 });
     }
 
-    const model = client.getGenerativeModel({
-      model: GEMINI_CHAT_MODEL,
-      systemInstruction: SYSTEM_PROMPT,
-      generationConfig: {
-        maxOutputTokens: 1200,
-        temperature: 0.35,
-        responseMimeType: "application/json",
-      },
-    });
-
     const contents = messages.map((message, index) => ({
       role: message.role === "assistant" ? ("model" as const) : ("user" as const),
       parts: [
@@ -144,9 +137,21 @@ export async function POST(request: Request) {
         ...(index === messages.length - 1 && imagePart ? [imagePart] : []),
       ],
     }));
-    const result = await model.generateContent({ contents });
+    const result = await generateWithChatModelFallback((candidate) => {
+      activeModel = candidate;
+      return client.models.generateContent({
+        model: candidate,
+        contents,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          maxOutputTokens: 1200,
+          temperature: 0.35,
+          responseMimeType: "application/json",
+        },
+      });
+    });
     receivedResponse = true;
-    const text = result.response.text();
+    const text = result.text ?? "";
     const json = text.match(/\{[\s\S]*\}/)?.[0];
     if (!json) throw new Error("INVALID_GEMINI_RESPONSE");
 
@@ -169,12 +174,12 @@ export async function POST(request: Request) {
         ? error.status
         : undefined;
     console.error("[ai/staff-assistant] Gemini request failed", {
-      model: GEMINI_CHAT_MODEL,
+      model: activeModel,
       status,
       errorName: error instanceof Error ? error.name : "UnknownError",
     });
     return NextResponse.json(
-      { error: getGeminiFailure(status, error, receivedResponse) },
+      { error: getGeminiFailure(activeModel, status, error, receivedResponse) },
       { status: 502 }
     );
   }

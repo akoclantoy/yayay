@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { APP_NAME } from "@/lib/constants";
 import {
-  GEMINI_CHAT_MODEL,
+  generateWithChatModelFallback,
   getGeminiClient,
   isGeminiConfigured,
   toGeminiContents,
@@ -42,25 +42,24 @@ export async function POST(request: Request) {
     }
 
     const genAI = getGeminiClient()!;
-    const model = genAI.getGenerativeModel({
-      model: GEMINI_CHAT_MODEL,
-      systemInstruction: SYSTEM_PROMPT,
-      generationConfig: {
-        maxOutputTokens: 800,
-        temperature: 0.7,
-      },
-    });
-
-    const result = await model.generateContentStream({
-      contents: toGeminiContents(chatMessages),
-    });
+    const stream = await generateWithChatModelFallback((model) =>
+      genAI.models.generateContentStream({
+        model,
+        contents: toGeminiContents(chatMessages),
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          maxOutputTokens: 800,
+          temperature: 0.7,
+        },
+      })
+    );
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of result.stream) {
-            const text = chunk.text();
+          for await (const chunk of stream) {
+            const text = chunk.text;
             if (text) controller.enqueue(encoder.encode(text));
           }
           controller.close();

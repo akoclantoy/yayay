@@ -48,47 +48,42 @@ export async function POST(request: Request) {
 
     if (isGeminiConfigured() && (imageUrl || imageData)) {
       const genAI = getGeminiClient()!;
-      const model = genAI.getGenerativeModel({
+      const imagePart = imageData
+        ? dataUrlAsInlineData(imageData)
+        : await fetchImageAsInlineData(imageUrl);
+      const result = await genAI.models.generateContent({
         model: GEMINI_VISION_MODEL,
-        generationConfig: {
+        contents: [
+          { text: CLASSIFY_PROMPT },
+          { text: description ?? "Classify this waste item for recycling." },
+          imagePart,
+        ],
+        config: {
           maxOutputTokens: 400,
           temperature: 0.3,
           responseMimeType: "application/json",
         },
       });
 
-      const imagePart = imageData
-        ? dataUrlAsInlineData(imageData)
-        : await fetchImageAsInlineData(imageUrl);
-      const result = await model.generateContent([
-        { text: CLASSIFY_PROMPT },
-        {
-          text:
-            description ?? "Classify this waste item for recycling.",
-        },
-        imagePart,
-      ]);
-
-      return NextResponse.json(parseClassification(result.response.text()));
+      return NextResponse.json(parseClassification(result.text ?? ""));
     }
 
     if (isGeminiConfigured() && description && !imageUrl) {
       const genAI = getGeminiClient()!;
-      const model = genAI.getGenerativeModel({
+      const result = await genAI.models.generateContent({
         model: GEMINI_VISION_MODEL,
-        generationConfig: {
+        contents: [
+          { text: CLASSIFY_PROMPT },
+          { text: description },
+        ],
+        config: {
           maxOutputTokens: 400,
           temperature: 0.3,
           responseMimeType: "application/json",
         },
       });
 
-      const result = await model.generateContent([
-        { text: CLASSIFY_PROMPT },
-        { text: description },
-      ]);
-
-      return NextResponse.json(parseClassification(result.response.text()));
+      return NextResponse.json(parseClassification(result.text ?? ""));
     }
 
     if (!isGeminiConfigured() && (imageUrl || imageData)) {

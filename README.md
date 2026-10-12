@@ -260,7 +260,7 @@ After the first successful deploy, open your Render URL and log in with seeded d
 
 | Variable | Default | Use |
 |---|---|---|
-| `GEMINI_CHAT_MODEL` | `gemini-2.5-flash-lite` | AI recycling assistant |
+| `GEMINI_CHAT_MODEL` | `gemini-3.1-flash-lite` | AI recycling assistant; falls back to this model if the configured model returns 404 |
 | `GEMINI_VISION_MODEL` | `gemini-2.5-flash` | Waste image classification |
 
 Get a Gemini API key at [Google AI Studio](https://aistudio.google.com/apikey).
