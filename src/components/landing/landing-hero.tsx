@@ -1,12 +1,76 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Check, Recycle, Sparkles, TrendingUp } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowRight,
+  ArrowUpRight,
+  Check,
+  Recycle,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { APP_TAGLINE } from "@/lib/constants";
 
+type PublicStats = {
+  totalRecycledKg: number;
+  averageResidentScore: number | null;
+  monthlyChangePercent: number | null;
+  verifiedRecords: number;
+  dailyImpact: { totalWeightKg: number }[];
+};
+
+const numberFormat = new Intl.NumberFormat("en-PH", {
+  maximumFractionDigits: 1,
+});
+
+function getMonthChangeLabel(change: number | null) {
+  if (change === null) return "First recorded activity this month";
+  if (change === 0) return "No change from the same period last month";
+  return `${numberFormat.format(Math.abs(change))}% ${
+    change > 0 ? "more" : "less"
+  } than the same period last month`;
+}
+
 export function LandingHero() {
+  const [stats, setStats] = useState<PublicStats | null>(null);
+  const [statsUnavailable, setStatsUnavailable] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetch("/api/stats/public", { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Unable to load public impact data.");
+        return response.json() as Promise<PublicStats>;
+      })
+      .then(setStats)
+      .catch(() => {
+        if (!controller.signal.aborted) setStatsUnavailable(true);
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  const activity = useMemo(() => {
+    if (!stats) return [];
+    return Array.from({ length: 10 }, (_, index) =>
+      stats.dailyImpact
+        .slice(index * 9, (index + 1) * 9)
+        .reduce((total, day) => total + day.totalWeightKg, 0)
+    );
+  }, [stats]);
+  const maxActivity = Math.max(...activity, 1);
+  const averageScore =
+    stats?.averageResidentScore === null ||
+    stats?.averageResidentScore === undefined
+      ? "—"
+      : new Intl.NumberFormat("en-PH", { maximumFractionDigits: 2 }).format(
+          stats.averageResidentScore
+        );
+
   return (
     <section className="relative overflow-hidden px-4 pb-20 pt-16 sm:pb-28 sm:pt-24">
       <div className="container mx-auto grid max-w-6xl items-center gap-14 lg:grid-cols-[1.05fr_0.95fr]">
@@ -72,26 +136,63 @@ export function LandingHero() {
             <div className="relative">
               <div className="mb-12 flex items-start justify-between">
                 <div>
-                  <p className="text-sm text-white/65">Community impact</p>
-                  <p className="mt-2 text-4xl font-semibold tracking-tight">12,480 kg</p>
-                  <p className="mt-1 flex items-center gap-1 text-sm text-[#b4d88c]"><TrendingUp className="h-4 w-4" /> 18.6% this month</p>
+                  <p className="text-sm text-white/65">Verified recycling to date</p>
+                  <p className="mt-2 text-4xl font-semibold tracking-tight">
+                    {stats
+                      ? `${numberFormat.format(stats.totalRecycledKg)} kg`
+                      : statsUnavailable
+                        ? "Data unavailable"
+                        : "Loading…"}
+                  </p>
+                  <p
+                    className={`mt-1 flex items-center gap-1 text-sm ${
+                      (stats?.monthlyChangePercent ?? 0) < 0
+                        ? "text-[#ffd0ca]"
+                        : "text-[#b4d88c]"
+                    }`}
+                  >
+                    {(stats?.monthlyChangePercent ?? 0) < 0 ? (
+                      <ArrowDownRight className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <ArrowUpRight className="h-4 w-4 shrink-0" />
+                    )}
+                    {stats
+                      ? getMonthChangeLabel(stats.monthlyChangePercent)
+                      : "Based on verified recycling records"}
+                  </p>
                 </div>
                 <div className="rounded-2xl bg-[#e8b34b] p-3 text-[#3c2a0b]"><Sparkles className="h-5 w-5" /></div>
               </div>
               <div className="mb-7 flex h-32 items-end gap-2 border-b border-white/15 pb-2">
-                {[34, 48, 42, 67, 58, 82, 74, 96, 86, 100].map((height, index) => (
-                  <div key={index} className="flex-1 rounded-t-md bg-[#8dbf45]" style={{ height: `${height}%`, opacity: 0.45 + index * 0.05 }} />
+                {activity.map((weight, index) => (
+                  <div
+                    key={index}
+                    aria-label={`Nine-day period ${index + 1}: ${numberFormat.format(weight)} kilograms`}
+                    className="flex-1 rounded-t-md bg-[#8dbf45]"
+                    role="img"
+                    style={{
+                      height: `${Math.max((weight / maxActivity) * 100, weight > 0 ? 8 : 0)}%`,
+                      opacity: 0.45 + index * 0.05,
+                    }}
+                    title={`${numberFormat.format(weight)} kg in this nine-day period`}
+                  />
                 ))}
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-white/65">This year</span>
-                <span className="flex items-center gap-2 font-medium"><Check className="h-4 w-4 text-[#b4d88c]" /> Verified collections</span>
+                <span className="text-white/65">Last 90 days</span>
+                <span className="flex items-center gap-2 font-medium">
+                  <Check className="h-4 w-4 text-[#b4d88c]" />
+                  {stats ? `${stats.verifiedRecords} verified records` : "Verified records"}
+                </span>
               </div>
             </div>
           </div>
           <div className="absolute -bottom-5 -left-5 rounded-2xl border border-border bg-card p-4 shadow-xl sm:-left-8">
             <p className="text-xs text-muted-foreground">Average resident score</p>
-            <p className="mt-1 text-xl font-bold text-primary">742 <span className="text-xs font-medium text-muted-foreground">/ 1000</span></p>
+            <p className="mt-1 text-xl font-bold text-primary">
+              {averageScore}{" "}
+              <span className="text-xs font-medium text-muted-foreground">/ 1000</span>
+            </p>
           </div>
         </motion.div>
       </div>

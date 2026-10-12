@@ -12,6 +12,7 @@ import { APP_NAME } from "@/lib/constants";
 import { LandingStats } from "@/components/landing/landing-stats";
 import { LandingHero } from "@/components/landing/landing-hero";
 import { LandingFeatures } from "@/components/landing/landing-features";
+import { LandingCommunityImpact } from "@/components/landing/landing-community-impact";
 import { LandingHowItWorks } from "@/components/landing/landing-how-it-works";
 import { LandingTestimonials } from "@/components/landing/landing-testimonials";
 import { LandingFooter } from "@/components/landing/landing-footer";
@@ -30,6 +31,7 @@ export default function HomePage() {
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="hover:text-foreground transition-colors">How it works</a>
+            <a href="#impact" className="hover:text-foreground transition-colors">Community impact</a>
           </nav>
           <div className="flex items-center gap-3">
             <a
@@ -65,6 +67,7 @@ export default function HomePage() {
         <Suspense fallback={null}>
           <LandingStats />
         </Suspense>
+        <LandingCommunityImpact />
         <LandingFeatures />
         <LandingHowItWorks />
         <LandingTestimonials />

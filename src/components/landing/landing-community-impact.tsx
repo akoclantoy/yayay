@@ -17,6 +17,7 @@ import { formatPoints } from "@/lib/utils";
 type DailyImpact = {
   day: string;
   records: number;
+  totalWeightKg: number;
   weights: number[];
 };
 
@@ -30,7 +31,8 @@ type CommunityStats = {
   carbonSavedKg: number;
   totalPoints: number;
   totalResidents: number;
-  averageResidentScore: number;
+  averageResidentScore: number | null;
+  scoredResidentCount: number;
   monthlyChangePercent: number | null;
   verifiedRecords: number;
   dailyImpact: DailyImpact[];
@@ -72,8 +74,7 @@ function groupActivityByNineDays(days: DailyImpact[]): ActivityBucket[] {
       startDay: group[0].day,
       endDay: group[group.length - 1].day,
       weightKg: group.reduce(
-        (total, day) =>
-          total + day.weights.reduce((daily, weight) => daily + weight, 0),
+        (total, day) => total + day.totalWeightKg,
         0
       ),
       records: group.reduce((total, day) => total + day.records, 0),
@@ -294,11 +295,21 @@ export function LandingCommunityImpact() {
               Average resident score
             </p>
             <p className="mt-1 text-lg font-bold leading-none">
-              {stats ? formatPoints(stats.averageResidentScore) : "—"}
+              {stats?.averageResidentScore !== null &&
+              stats?.averageResidentScore !== undefined
+                ? new Intl.NumberFormat("en-PH", {
+                    maximumFractionDigits: 2,
+                  }).format(stats.averageResidentScore)
+                : "—"}
               <span className="ml-1 text-xs font-medium text-[#60756b] dark:text-[#9ab2a4]">
                 / 1000
               </span>
             </p>
+            {stats && (
+              <p className="mt-1 text-[10px] text-[#60756b] dark:text-[#9ab2a4]">
+                Across {formatPoints(stats.scoredResidentCount)} residents
+              </p>
+            )}
           </div>
         </div>
 

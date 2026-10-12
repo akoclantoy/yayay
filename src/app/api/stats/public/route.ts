@@ -69,8 +69,11 @@ export async function GET() {
           _sum: { weightKg: true },
         }),
         db.residentProfile.aggregate({
-          where: { user: { deletedAt: null } },
-          _avg: { environmentalScore: true },
+          where: {
+            user: { role: "RESIDENT", deletedAt: null },
+          },
+          _count: true,
+          _sum: { environmentalScore: true },
         }),
         db.recyclingRecord.count({
           where: { deletedAt: null, verified: true },
@@ -105,15 +108,17 @@ export async function GET() {
     const topMaterialNames = new Set(materials.map((material) => material.name));
     const dailyTotals = new Map<
       string,
-      { records: number; weights: Map<string, number> }
+      { records: number; totalWeightKg: number; weights: Map<string, number> }
     >();
     for (const record of recentRecords) {
       const dayKey = record.collectionDate.toISOString().slice(0, 10);
       const day = dailyTotals.get(dayKey) ?? {
         records: 0,
+        totalWeightKg: 0,
         weights: new Map<string, number>(),
       };
       day.records += 1;
+      day.totalWeightKg += record.weightKg;
       if (topMaterialNames.has(record.wasteCategory.name)) {
         day.weights.set(
           record.wasteCategory.name,
@@ -131,6 +136,7 @@ export async function GET() {
       return {
         day,
         records: totals?.records ?? 0,
+        totalWeightKg: totals?.totalWeightKg ?? 0,
         weights: materials.map(
           (material) => totals?.weights.get(material.name) ?? 0
         ),
@@ -138,6 +144,7 @@ export async function GET() {
     });
     const currentMonthKg = currentMonth._sum.weightKg ?? 0;
     const previousMonthKg = previousMonth._sum.weightKg ?? 0;
+    const scoredResidentCount = averageResidentScore._count ?? 0;
     const monthlyChangePercent =
       previousMonthKg > 0
         ? ((currentMonthKg - previousMonthKg) / previousMonthKg) * 100
@@ -150,9 +157,12 @@ export async function GET() {
       totalRecycledKg: recycled._sum.weightKg ?? 0,
       totalPoints: recycled._sum.pointsEarned ?? 0,
       carbonSavedKg: recycled._sum.carbonSavedKg ?? 0,
-      averageResidentScore: Math.round(
-        averageResidentScore._avg.environmentalScore ?? 0
-      ),
+      averageResidentScore:
+        scoredResidentCount > 0
+          ? (averageResidentScore._sum.environmentalScore ?? 0) /
+            scoredResidentCount
+          : null,
+      scoredResidentCount,
       monthlyChangePercent,
       verifiedRecords,
       dailyImpact,
