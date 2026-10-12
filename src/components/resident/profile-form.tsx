@@ -97,7 +97,7 @@ export function ProfileForm({
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
-              <p className="text-xs text-muted-foreground">Your barangay contributes to the Top Barangays community ranking.</p>
+              <p className="text-xs text-muted-foreground">Your barangay helps us show relevant local collection information.</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="house">House number</Label>
