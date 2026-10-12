@@ -2,11 +2,13 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { BadgeCollection } from "@/components/resident/badge-collection";
+import { syncWeightMilestoneBadges } from "@/lib/services/badges";
 
 export default async function BadgesPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
+  const totalWeightKg = await syncWeightMilestoneBadges(session.user.id);
   const [allBadges, earned] = await Promise.all([
     db.badge.findMany({ orderBy: { name: "asc" } }),
     db.userBadge.findMany({
@@ -19,6 +21,7 @@ export default async function BadgesPage() {
 
   return (
     <BadgeCollection
+      totalWeightKg={totalWeightKg}
       initialBadges={allBadges.map((badge) => {
         const entry = earnedByBadge.get(badge.id);
         return {
@@ -27,6 +30,7 @@ export default async function BadgesPage() {
           description: badge.description,
           icon: badge.icon,
           criteria: badge.criteria,
+          targetWeightKg: badge.targetWeightKg,
           points: entry?.bonusPoints ?? badge.points,
           earnedAt: entry?.earnedAt.toISOString() ?? null,
           claimedAt: entry?.claimedAt?.toISOString() ?? null,

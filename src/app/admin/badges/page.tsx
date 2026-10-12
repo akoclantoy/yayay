@@ -27,6 +27,7 @@ export default async function AdminBadgesPage() {
           description: badge.description,
           icon: badge.icon,
           criteria: badge.criteria,
+          targetWeightKg: badge.targetWeightKg,
           points: badge.points,
           awards: badge._count.userBadges,
         }))}

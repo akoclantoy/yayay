@@ -15,6 +15,7 @@ type BadgeItem = {
   description: string | null;
   icon: string | null;
   criteria: string | null;
+  targetWeightKg: number | null;
   points: number;
   awards: number;
 };
@@ -26,6 +27,7 @@ type BadgeForm = {
   description: string;
   icon: string;
   criteria: string;
+  targetWeightKg: string;
   points: string;
 };
 
@@ -34,6 +36,7 @@ const EMPTY_FORM: BadgeForm = {
   description: "",
   icon: "🏅",
   criteria: "",
+  targetWeightKg: "",
   points: "0",
 };
 
@@ -59,6 +62,8 @@ export function BadgeManager({
       description: badge.description ?? "",
       icon: badge.icon ?? "🏅",
       criteria: badge.criteria ?? "",
+      targetWeightKg:
+        badge.targetWeightKg === null ? "" : String(badge.targetWeightKg),
       points: String(badge.points),
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -82,6 +87,9 @@ export function BadgeManager({
           description: form.description || null,
           icon: form.icon || null,
           criteria: form.criteria || null,
+          targetWeightKg: form.targetWeightKg
+            ? Number(form.targetWeightKg)
+            : null,
           points: Number(form.points),
         }),
       });
@@ -93,6 +101,7 @@ export function BadgeManager({
         description: data.description,
         icon: data.icon,
         criteria: data.criteria,
+        targetWeightKg: data.targetWeightKg,
         points: data.points,
         awards: data._count.userBadges,
       };
@@ -191,7 +200,8 @@ export function BadgeManager({
                 <div className="space-y-1.5"><Label htmlFor="badge-name">Badge name</Label><Input id="badge-name" required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. Neighborhood Guardian" /></div>
               </div>
               <div className="space-y-1.5"><Label htmlFor="badge-description">Description</Label><textarea id="badge-description" maxLength={500} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="What did the resident accomplish?" className="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>
-              <div className="space-y-1.5"><Label htmlFor="badge-criteria">Milestone</Label><Input id="badge-criteria" maxLength={500} value={form.criteria} onChange={(event) => setForm({ ...form, criteria: event.target.value })} placeholder="e.g. Recycled 25 kg this month" /></div>
+              <div className="space-y-1.5"><Label htmlFor="badge-target-weight">Lifetime recycling target</Label><div className="relative"><Input id="badge-target-weight" type="number" min="0.01" max="1000000" step="0.01" value={form.targetWeightKg} onChange={(event) => setForm({ ...form, targetWeightKg: event.target.value })} placeholder="Optional" className="pr-10" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground">kg</span></div><p className="text-xs text-muted-foreground">Automatically awarded when verified lifetime recycling reaches this amount.</p></div>
+              <div className="space-y-1.5"><Label htmlFor="badge-criteria">Milestone details</Label><Input id="badge-criteria" maxLength={500} value={form.criteria} onChange={(event) => setForm({ ...form, criteria: event.target.value })} placeholder="e.g. Recycled your first 25 kg" /></div>
               <div className="space-y-1.5"><Label htmlFor="badge-points">Claimable bonus</Label><div className="relative"><Input id="badge-points" type="number" min="0" max="100000" step="1" required value={form.points} onChange={(event) => setForm({ ...form, points: event.target.value })} className="pr-14" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground">points</span></div></div>
               <div className="flex gap-2"><Button type="submit" disabled={saving}>{saving ? "Saving..." : editingId ? "Save badge" : "Create badge"}</Button>{editingId && <Button type="button" variant="outline" onClick={resetForm}>Cancel</Button>}</div>
             </form>
@@ -209,6 +219,7 @@ export function BadgeManager({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{badge.name}</h3><Badge variant="secondary">{badge.awards} awarded</Badge></div>
                   <p className="mt-1 text-sm text-muted-foreground">{badge.description || badge.criteria || "No description added"}</p>
+                  {badge.targetWeightKg !== null && <p className="mt-1 text-xs text-muted-foreground">Lifetime target: {badge.targetWeightKg.toLocaleString()} kg</p>}
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end">
                   <p className="whitespace-nowrap text-sm font-semibold text-emerald-800">{badge.points.toLocaleString()} pts</p>

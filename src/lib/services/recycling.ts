@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { syncWeightMilestoneBadges } from "@/lib/services/badges";
 
 export async function recordRecycling(input: {
   residentId: string;
@@ -36,6 +37,12 @@ export async function recordRecycling(input: {
     },
     include: { wasteCategory: true },
   });
+
+  try {
+    await syncWeightMilestoneBadges(input.residentId);
+  } catch (error) {
+    console.error("[recycling badge milestones]", error);
+  }
 
   void (async () => {
     try {

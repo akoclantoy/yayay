@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Award, Check, Gift, LockKeyhole, Sparkles } from "lucide-react";
+import {
+  Award,
+  Check,
+  Gift,
+  LockKeyhole,
+  Sparkles,
+  Target,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,12 +20,19 @@ type BadgeEntry = {
   description: string | null;
   icon: string | null;
   criteria: string | null;
+  targetWeightKg: number | null;
   points: number;
   earnedAt: string | null;
   claimedAt: string | null;
 };
 
-export function BadgeCollection({ initialBadges }: { initialBadges: BadgeEntry[] }) {
+export function BadgeCollection({
+  initialBadges,
+  totalWeightKg,
+}: {
+  initialBadges: BadgeEntry[];
+  totalWeightKg: number;
+}) {
   const [badges, setBadges] = useState(initialBadges);
   const [claiming, setClaiming] = useState<string | null>(null);
   const earnedCount = badges.filter((badge) => badge.earnedAt).length;
@@ -53,11 +67,11 @@ export function BadgeCollection({ initialBadges }: { initialBadges: BadgeEntry[]
           <div className="max-w-xl">
             <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-emerald-900"><Sparkles className="h-4 w-4" /> Your milestones</p>
             <h1 className="text-3xl font-semibold text-emerald-950">Badges & achievements</h1>
-            <p className="mt-2 text-sm leading-6 text-emerald-950/70">Every badge marks a positive change for your community. Claim earned bonus points straight to your wallet.</p>
+            <p className="mt-2 text-sm leading-6 text-emerald-950/70">Every badge marks a positive change for your community. Reach a lifetime recycling milestone to earn a badge, then claim its bonus points into your wallet.</p>
           </div>
           <div className="flex gap-6 rounded-xl border border-white/70 bg-white/60 px-5 py-4 backdrop-blur-sm">
             <div><p className="text-2xl font-semibold text-emerald-950">{earnedCount}<span className="text-base text-emerald-950/50">/{badges.length}</span></p><p className="text-xs text-emerald-950/65">earned</p></div>
-            <div className="border-l border-emerald-950/15 pl-6"><p className="text-2xl font-semibold text-emerald-950">{claimablePoints.toLocaleString()}</p><p className="text-xs text-emerald-950/65">points to claim</p></div>
+            <div className="border-l border-emerald-950/15 pl-6"><p className="text-2xl font-semibold text-emerald-950">{claimablePoints.toLocaleString()}</p><p className="text-xs text-emerald-950/65">points ready to claim</p></div>
           </div>
         </div>
       </header>
@@ -65,10 +79,22 @@ export function BadgeCollection({ initialBadges }: { initialBadges: BadgeEntry[]
       {badges.length === 0 ? (
         <Card><CardContent className="py-14 text-center"><Award className="mx-auto mb-3 h-8 w-8 text-muted-foreground/50" /><p className="font-medium">No badges are available yet</p><p className="mt-1 text-sm text-muted-foreground">Your next milestone will appear here.</p></CardContent></Card>
       ) : (
+        <>
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm">
+          <Target className="h-4 w-4 shrink-0 text-primary" />
+          <span>
+            Your verified lifetime recycling total:{" "}
+            <strong>{totalWeightKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg</strong>
+          </span>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {badges.map((badge) => {
             const earned = Boolean(badge.earnedAt);
             const claimed = Boolean(badge.claimedAt);
+            const targetWeightKg = badge.targetWeightKg;
+            const progress = targetWeightKg
+              ? Math.min((totalWeightKg / targetWeightKg) * 100, 100)
+              : null;
             return (
               <Card key={badge.id} className={`overflow-hidden transition-colors ${earned ? "border-emerald-800/20" : "opacity-75"}`}>
                 <CardContent className="flex h-full flex-col p-5">
@@ -77,9 +103,61 @@ export function BadgeCollection({ initialBadges }: { initialBadges: BadgeEntry[]
                     {earned ? <Badge variant="success">Earned</Badge> : <LockKeyhole className="mt-1 h-4 w-4 text-muted-foreground" aria-label="Not yet earned" />}
                   </div>
                   <h2 className="mt-4 font-semibold">{badge.name}</h2>
-                  <p className="mt-1 min-h-10 text-sm leading-5 text-muted-foreground">{badge.description || badge.criteria || "A milestone in your recycling journey."}</p>
+                  {badge.description && (
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      {badge.description}
+                    </p>
+                  )}
+                  {badge.criteria && (
+                    <p className="mt-2 text-sm leading-5">
+                      <span className="font-medium">Milestone details:</span>{" "}
+                      <span className="text-muted-foreground">{badge.criteria}</span>
+                    </p>
+                  )}
+                  {targetWeightKg !== null ? (
+                    <div className="mt-4 space-y-1.5">
+                      <div className="flex justify-between gap-3 text-xs">
+                        <span className="font-medium">Lifetime recycling target</span>
+                        <span className="text-muted-foreground">
+                          {Math.min(totalWeightKg, targetWeightKg).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          {" / "}
+                          {targetWeightKg.toLocaleString()} kg
+                        </span>
+                      </div>
+                      <div
+                        className="h-2 overflow-hidden rounded-full bg-muted"
+                        role="progressbar"
+                        aria-label={`${badge.name} recycling milestone progress`}
+                        aria-valuemin={0}
+                        aria-valuemax={targetWeightKg}
+                        aria-valuenow={Math.min(totalWeightKg, targetWeightKg)}
+                      >
+                        <div
+                          className="h-full rounded-full bg-emerald-600 transition-all"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      {!earned && (
+                        <p className="text-xs text-muted-foreground">
+                          {(targetWeightKg - totalWeightKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} kg more to earn this badge
+                        </p>
+                      )}
+                    </div>
+                  ) : !badge.description && !badge.criteria ? (
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      A badge awarded by your community team.
+                    </p>
+                  ) : null}
                   <div className="mt-5 flex items-center justify-between gap-3 border-t border-border/70 pt-4">
-                    <div className="flex items-center gap-1.5 text-sm font-semibold text-emerald-800"><Gift className="h-4 w-4" />{badge.points.toLocaleString()} pts</div>
+                    <div>
+                      <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-800">
+                        <Gift className="h-4 w-4" />
+                        {badge.points.toLocaleString()} points
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Claimable bonus added to your reward wallet
+                      </p>
+                    </div>
                     {claimed ? (
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Check className="h-4 w-4 text-emerald-700" /> Claimed</span>
                     ) : earned && badge.points > 0 ? (
@@ -92,12 +170,20 @@ export function BadgeCollection({ initialBadges }: { initialBadges: BadgeEntry[]
                       <span className="text-xs text-muted-foreground">Not earned yet</span>
                     )}
                   </div>
-                  {earned && <p className="mt-3 text-xs text-muted-foreground">Earned {new Date(badge.earnedAt!).toLocaleDateString()}</p>}
+                  {earned && (
+                    <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                      <p>Earned {new Date(badge.earnedAt!).toLocaleString()}</p>
+                      {claimed && badge.claimedAt && (
+                        <p>Bonus claimed {new Date(badge.claimedAt).toLocaleString()}</p>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
           })}
         </div>
+        </>
       )}
     </div>
   );

@@ -8,6 +8,7 @@ const badgeSchema = z.object({
   description: z.string().trim().max(500).optional().nullable(),
   icon: z.string().trim().max(12).optional().nullable(),
   criteria: z.string().trim().max(500).optional().nullable(),
+  targetWeightKg: z.number().positive().max(1000000).optional().nullable(),
   points: z.number().int().min(0).max(100000),
 });
 
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
         description: payload.description || null,
         icon: payload.icon || null,
         criteria: payload.criteria || null,
+        targetWeightKg: payload.targetWeightKg ?? null,
       },
       include: { _count: { select: { userBadges: true } } },
     });
@@ -51,6 +53,7 @@ export async function PATCH(request: Request) {
         description: payload.description || null,
         icon: payload.icon || null,
         criteria: payload.criteria || null,
+        targetWeightKg: payload.targetWeightKg ?? null,
         points: payload.points,
       },
       include: { _count: { select: { userBadges: true } } },
