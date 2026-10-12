@@ -134,9 +134,9 @@ export default async function ResidentDashboardPage() {
               <div className="text-center py-10 text-muted-foreground">
                 <Recycle className="h-10 w-10 mx-auto mb-3 opacity-40" />
                 <p>No recycling records yet.</p>
-                <Link href="/resident/centers">
+                <Link href="/resident/pickup">
                   <Button variant="outline" size="sm" className="mt-4">
-                    Find a collection center
+                    Request a pickup
                   </Button>
                 </Link>
               </div>

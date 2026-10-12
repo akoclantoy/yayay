@@ -45,7 +45,6 @@ const RESIDENT_NAV: NavItem[] = [
   { href: "/resident/qr-card", label: "QR Card", icon: QrCode },
   { href: "/resident/history", label: "Collection History", icon: History },
   { href: "/resident/pickup", label: "Request Pickup", icon: Truck },
-  { href: "/resident/centers", label: "Nearby Centers", icon: MapPin },
   { href: "/resident/schedule", label: "Schedule", icon: Calendar },
   { href: "/resident/leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/resident/badges", label: "Badges", icon: Award },

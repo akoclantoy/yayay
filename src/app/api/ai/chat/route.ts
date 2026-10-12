@@ -95,7 +95,7 @@ function getFallbackResponse(question: string): string {
     return "Reward points vary by material: Plastic ~10/kg, Paper ~8/kg, Glass ~12/kg, Metal ~15/kg, Electronics ~25/kg. Points credit automatically when staff scan your QR card at collection.";
   }
   if (q.includes("center") || q.includes("near")) {
-    return "Visit the 'Nearby Centers' section in your dashboard to see collection centers on the map with hours and contact info. You can also request a pickup from home.";
+    return "You can request a pickup from home through the Request Pickup section in your dashboard. Contact your barangay staff for local collection center details.";
   }
 
   return `Thanks for your question! For ${APP_NAME}, always sort waste before collection, bring your QR card, and visit a collection center during scheduled hours. Configure GEMINI_API_KEY for full AI responses. Common tips: rinse containers, separate hazardous waste, and check your barangay schedule.`;
