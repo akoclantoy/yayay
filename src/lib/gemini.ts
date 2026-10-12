@@ -1,18 +1,18 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export const GEMINI_CHAT_MODEL =
-  process.env.GEMINI_CHAT_MODEL ?? "gemini-2.5-flash-lite";
-
-export const GEMINI_VISION_MODEL =
-  process.env.GEMINI_VISION_MODEL ?? "gemini-2.5-flash";
-
 function readFirstEnv(...keys: string[]) {
   for (const key of keys) {
-    const value = process.env[key];
+    const value = process.env[key]?.trim();
     if (value) return value;
   }
   return undefined;
 }
+
+export const GEMINI_CHAT_MODEL =
+  readFirstEnv("GEMINI_CHAT_MODEL") ?? "gemini-2.5-flash-lite";
+
+export const GEMINI_VISION_MODEL =
+  readFirstEnv("GEMINI_VISION_MODEL") ?? "gemini-2.5-flash";
 
 export function getGeminiApiKey() {
   return readFirstEnv("GEMINI_API_KEY", "GOOGLE_API_KEY", "Gemini_api_key");

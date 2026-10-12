@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
-import { GEMINI_CHAT_MODEL, dataUrlAsInlineData, getGeminiClient, isGeminiConfigured } from "@/lib/gemini";
+import {
+  GEMINI_CHAT_MODEL,
+  dataUrlAsInlineData,
+  getGeminiClient,
+  isGeminiConfigured,
+} from "@/lib/gemini";
 
 const wasteTypes = [
   "PLASTIC",
@@ -41,6 +46,38 @@ When an image is present, inspect it and provide a cautious best-effort identifi
 If hazardous or electronic material may be present, explicitly recommend careful handling and following local approved disposal procedures.
 Return only valid JSON with exactly these keys: answer (concise helpful response), suggestion (null or an object containing type, material, disposal, confidence from 0 to 1).`;
 
+function getGeminiFailure(
+  status: number | undefined,
+  error: unknown,
+  receivedResponse: boolean
+) {
+  if (status === 400) {
+    return "Gemini rejected the request. Check that GEMINI_CHAT_MODEL in Render is a supported model for your API key.";
+  }
+  if (status === 401 || status === 403) {
+    return "Gemini rejected the API key or its permissions. Check the GEMINI_API_KEY value and API restrictions in Render and Google AI Studio.";
+  }
+  if (status === 404) {
+    return `Gemini model "${GEMINI_CHAT_MODEL}" was not found. Set GEMINI_CHAT_MODEL in Render to a model enabled for your API key.`;
+  }
+  if (status === 429) {
+    return "Gemini quota or rate limit reached. Check the API key's billing and quota in Google AI Studio, then try again.";
+  }
+  if (status !== undefined && status >= 500) {
+    return "Gemini is temporarily unavailable. Please try again shortly.";
+  }
+  if (
+    receivedResponse ||
+    (error instanceof Error && error.message === "INVALID_GEMINI_RESPONSE")
+  ) {
+    return "Gemini responded, but its answer could not be read. Please try again.";
+  }
+  if (status !== undefined) {
+    return `Gemini request failed with HTTP ${status}. Check the Gemini API settings and try again.`;
+  }
+  return "Render could not reach Gemini. Check the service logs and outbound network, then try again.";
+}
+
 export async function POST(request: Request) {
   const authResult = await requireRole(["COLLECTION_STAFF", "ADMIN"]);
   if ("error" in authResult) return authResult.error;
@@ -53,6 +90,7 @@ export async function POST(request: Request) {
   }
 
   let body: unknown;
+  let receivedResponse = false;
   try {
     body = await request.json();
   } catch {
@@ -107,20 +145,36 @@ export async function POST(request: Request) {
       ],
     }));
     const result = await model.generateContent({ contents });
+    receivedResponse = true;
     const text = result.response.text();
     const json = text.match(/\{[\s\S]*\}/)?.[0];
-    if (!json) throw new Error("Gemini returned an invalid assistant response");
+    if (!json) throw new Error("INVALID_GEMINI_RESPONSE");
 
-    const response = responseSchema.safeParse(JSON.parse(json));
+    let resultBody: unknown;
+    try {
+      resultBody = JSON.parse(json);
+    } catch {
+      throw new Error("INVALID_GEMINI_RESPONSE");
+    }
+    const response = responseSchema.safeParse(resultBody);
     if (!response.success) {
-      throw new Error("Gemini returned an invalid assistant response");
+      throw new Error("INVALID_GEMINI_RESPONSE");
     }
 
     return NextResponse.json(response.data);
   } catch (error) {
-    console.error("[ai/staff-assistant]", error);
+    const status =
+      error && typeof error === "object" && "status" in error &&
+      typeof error.status === "number"
+        ? error.status
+        : undefined;
+    console.error("[ai/staff-assistant] Gemini request failed", {
+      model: GEMINI_CHAT_MODEL,
+      status,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json(
-      { error: "Gemini could not complete the request. Please try again." },
+      { error: getGeminiFailure(status, error, receivedResponse) },
       { status: 502 }
     );
   }
