@@ -35,9 +35,16 @@ export function BadgeCollection({
 }) {
   const [badges, setBadges] = useState(initialBadges);
   const [claiming, setClaiming] = useState<string | null>(null);
-  const earnedCount = badges.filter((badge) => badge.earnedAt).length;
-  const claimablePoints = badges.reduce((total, badge) =>
-    total + (badge.earnedAt && !badge.claimedAt ? badge.points : 0), 0);
+  const earnedCount = badges.filter((badge) =>
+    badge.earnedAt ||
+    (badge.targetWeightKg !== null && totalWeightKg >= badge.targetWeightKg)
+  ).length;
+  const claimablePoints = badges.reduce((total, badge) => {
+    const unlocked =
+      Boolean(badge.earnedAt) ||
+      (badge.targetWeightKg !== null && totalWeightKg >= badge.targetWeightKg);
+    return total + (unlocked && !badge.claimedAt ? badge.points : 0);
+  }, 0);
 
   async function claimBonus(badgeId: string) {
     setClaiming(badgeId);
@@ -49,8 +56,9 @@ export function BadgeCollection({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Unable to claim bonus");
+      const claimedAt = new Date().toISOString();
       setBadges((current) => current.map((badge) => badge.id === badgeId
-        ? { ...badge, claimedAt: new Date().toISOString() }
+        ? { ...badge, earnedAt: badge.earnedAt ?? claimedAt, claimedAt }
         : badge));
       toast.success(`${data.points} points added to your wallet`);
     } catch (error) {
@@ -89,7 +97,10 @@ export function BadgeCollection({
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {badges.map((badge) => {
-            const earned = Boolean(badge.earnedAt);
+            const reachedMilestone =
+              badge.targetWeightKg !== null &&
+              totalWeightKg >= badge.targetWeightKg;
+            const earned = Boolean(badge.earnedAt) || reachedMilestone;
             const claimed = Boolean(badge.claimedAt);
             const targetWeightKg = badge.targetWeightKg;
             const progress = targetWeightKg
@@ -137,7 +148,7 @@ export function BadgeCollection({
                           style={{ width: `${progress}%` }}
                         />
                       </div>
-                      {!earned && (
+                      {!reachedMilestone && (
                         <p className="text-xs text-muted-foreground">
                           {(targetWeightKg - totalWeightKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} kg more to earn this badge
                         </p>
@@ -170,9 +181,9 @@ export function BadgeCollection({
                       <span className="text-xs text-muted-foreground">Not earned yet</span>
                     )}
                   </div>
-                  {earned && (
+                  {earned && badge.earnedAt && (
                     <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                      <p>Earned {new Date(badge.earnedAt!).toLocaleString()}</p>
+                      <p>Earned {new Date(badge.earnedAt).toLocaleString()}</p>
                       {claimed && badge.claimedAt && (
                         <p>Bonus claimed {new Date(badge.claimedAt).toLocaleString()}</p>
                       )}
