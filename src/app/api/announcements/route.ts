@@ -10,7 +10,10 @@ const announcementSchema = z.object({
   isPinned: z.boolean().default(false),
 });
 
-const updateSchema = announcementSchema.extend({ id: z.string().min(1) });
+const updateSchema = announcementSchema.extend({
+  id: z.string().min(1),
+  priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).optional(),
+});
 
 export async function POST(request: Request) {
   const authResult = await requireRole(["ADMIN"]);
@@ -75,7 +78,7 @@ export async function PATCH(request: Request) {
       data: {
         title: input.title,
         content: input.content,
-        priority: input.priority,
+        ...(input.priority ? { priority: input.priority } : {}),
         isPinned: input.isPinned,
         expiresAt: null,
       },

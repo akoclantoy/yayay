@@ -9,7 +9,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { APP_NAME } from "@/lib/constants";
-import { LandingCommunityImpact } from "@/components/landing/landing-community-impact";
 import { LandingStats } from "@/components/landing/landing-stats";
 import { LandingHero } from "@/components/landing/landing-hero";
 import { LandingFeatures } from "@/components/landing/landing-features";
@@ -31,7 +30,6 @@ export default function HomePage() {
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="hover:text-foreground transition-colors">How it works</a>
-            <a href="#impact" className="hover:text-foreground transition-colors">Impact</a>
           </nav>
           <div className="flex items-center gap-3">
             <a
@@ -69,7 +67,6 @@ export default function HomePage() {
         </Suspense>
         <LandingFeatures />
         <LandingHowItWorks />
-        <LandingCommunityImpact />
         <LandingTestimonials />
         <section className="py-24 px-4">
           <div className="container mx-auto max-w-4xl text-center">

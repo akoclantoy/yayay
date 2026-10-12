@@ -12,7 +12,6 @@ export default async function AdminAnnouncementsPage() {
     id: announcement.id,
     title: announcement.title,
     content: announcement.content,
-    priority: announcement.priority,
     isPinned: announcement.isPinned,
     createdAt: announcement.createdAt.toISOString(),
     authorName: announcement.author?.name ?? null,

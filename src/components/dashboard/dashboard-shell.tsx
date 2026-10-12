@@ -60,7 +60,6 @@ const STAFF_NAV: NavItem[] = [
   { href: "/staff/scan", label: "Scan QR", icon: ScanLine },
   { href: "/staff/record", label: "Record Recycling", icon: ClipboardList },
   { href: "/staff/pickups", label: "Manage Pickups", icon: Truck },
-  { href: "/staff/routes", label: "Routes", icon: MapPin },
   { href: "/staff/reports", label: "Reports", icon: History },
 ];
 
