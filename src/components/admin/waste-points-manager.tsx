@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,10 @@ type Category = { id: string; name: string; type: string; pointsPerKg: number; c
 export function WastePointsManager({ initial }: { initial: Category[] }) {
   const [categories, setCategories] = useState(initial);
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCategories(initial);
+  }, [initial]);
 
   async function updatePoints(category: Category, value: string) {
     const pointsPerKg = Number(value);

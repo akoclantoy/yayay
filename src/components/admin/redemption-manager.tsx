@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Search, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +29,10 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
   const [redemptions, setRedemptions] = useState(initial);
   const [search, setSearch] = useState("");
   const [selectedQr, setSelectedQr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRedemptions(initial);
+  }, [initial]);
 
   const filteredRedemptions = redemptions.filter((redemption) => {
     const query = search.trim().toLowerCase();

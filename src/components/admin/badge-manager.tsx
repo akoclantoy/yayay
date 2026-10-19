@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Award, Gift, Pencil, Sparkles, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +54,10 @@ export function BadgeManager({
   const [selectedResident, setSelectedResident] = useState("");
   const [saving, setSaving] = useState(false);
   const [awarding, setAwarding] = useState(false);
+
+  useEffect(() => {
+    setBadges(initialBadges);
+  }, [initialBadges]);
 
   function editBadge(badge: BadgeItem) {
     setEditingId(badge.id);

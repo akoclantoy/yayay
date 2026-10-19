@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { MIN_REDEMPTION_POINTS } from "@/lib/constants";
@@ -14,6 +14,10 @@ export function RedeemCard({ balance }: { balance: number }) {
   const [loading, setLoading] = useState(false);
   const [currentBalance, setCurrentBalance] = useState(balance);
   const [redeemAmount, setRedeemAmount] = useState("");
+
+  useEffect(() => {
+    setCurrentBalance(balance);
+  }, [balance]);
 
   const amount = Number(redeemAmount);
   const points = currencyToPoints(amount);

@@ -64,9 +64,10 @@ async function main() {
   });
 
   if (setup.status !== 0) {
-    console.warn(
-      `[start-render] Database setup exited with status ${setup.status}. Continuing startup so the app can still bind to port ${port}.`
+    console.error(
+      `[start-render] Database setup failed with status ${setup.status ?? "unknown"}; refusing to start without realtime database notifications.`
     );
+    process.exit(setup.status ?? 1);
   }
 
   const next = spawn(

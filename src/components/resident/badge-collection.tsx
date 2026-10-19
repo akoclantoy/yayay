@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Award,
   Check,
@@ -35,6 +35,11 @@ export function BadgeCollection({
 }) {
   const [badges, setBadges] = useState(initialBadges);
   const [claiming, setClaiming] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBadges(initialBadges);
+  }, [initialBadges]);
+
   function isUnlocked(badge: BadgeEntry) {
     return badge.targetWeightKg !== null
       ? totalWeightKg >= badge.targetWeightKg

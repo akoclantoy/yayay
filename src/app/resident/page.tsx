@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { AnimatedPoints } from "@/components/resident/animated-points";
 import {
   DashboardPageHeader,
   FadeInSection,
@@ -105,7 +106,13 @@ export default async function ResidentDashboardPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">{stat.label}</p>
-                      <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                      <p className="text-2xl font-bold mt-1">
+                        {stat.label === "Reward balance" ? (
+                          <AnimatedPoints value={balance} />
+                        ) : (
+                          stat.value
+                        )}
+                      </p>
                       <p className="text-xs text-muted-foreground mt-0.5">{stat.sub}</p>
                     </div>
                     <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${stat.bg}`}>

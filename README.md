@@ -109,6 +109,18 @@ After seeding, log in with:
 | Staff | `/staff` | Collection staff |
 | Admin | `/admin` | Administrators |
 
+## Live updates
+
+Signed-in portals receive database change notifications and refresh their
+server-rendered data automatically. Residents see recycling points animate to
+the new balance after staff records a collection.
+
+The app installs PostgreSQL change-notification triggers when `npm run db:setup`
+runs. Set `DIRECT_URL` to a direct PostgreSQL connection for reliable
+`LISTEN`/`NOTIFY` support, especially when `DATABASE_URL` uses a transaction
+pooler. The database role must be able to create a function and triggers in the
+`ecorewards` schema.
+
 ## Key Features
 
 **Residents**

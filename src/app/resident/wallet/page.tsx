@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { RewardsCatalog } from "@/components/resident/rewards-catalog";
 import { RedeemCard } from "@/components/resident/redeem-card";
 import { GCashRedemptionCard } from "@/components/resident/gcash-redemption-card";
+import { AnimatedPoints } from "@/components/resident/animated-points";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,10 @@ export default async function WalletPage() {
         <Card className="bg-gradient-to-br from-primary/10 to-secondary/5">
           <CardContent className="pt-8 pb-6 text-center">
             <p className="text-sm text-muted-foreground">Available balance</p>
-            <p className="text-5xl font-bold text-gradient mt-2">{formatPoints(balance)}</p>
+            <AnimatedPoints
+              value={balance}
+              className="mt-2 block text-5xl font-bold text-gradient"
+            />
             <p className="text-sm text-muted-foreground mt-1">points</p>
             <p className="text-sm font-medium text-primary mt-2">{formatCurrency(pointsToCurrency(balance))} equivalent</p>
           </CardContent>
@@ -59,7 +63,10 @@ export default async function WalletPage() {
         <Card>
           <CardContent className="pt-8 pb-6 text-center">
             <p className="text-sm text-muted-foreground">Lifetime earned</p>
-            <p className="text-4xl font-bold mt-2">{formatPoints(lifetime)}</p>
+            <AnimatedPoints
+              value={lifetime}
+              className="mt-2 block text-4xl font-bold"
+            />
             <p className="text-sm text-muted-foreground mt-1">total points</p>
             <p className="text-sm font-medium text-primary mt-2">{formatCurrency(pointsToCurrency(lifetime))} equivalent</p>
           </CardContent>

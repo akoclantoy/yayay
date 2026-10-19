@@ -1,10 +1,13 @@
 import { execSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { config } from "dotenv";
+import pg from "pg";
 
 config({ path: ".env.local" });
 config();
 
 const databaseUrl = process.env.DATABASE_URL ?? process.env.DIRECT_URL;
+const realtimeDatabaseUrl = process.env.DIRECT_URL ?? databaseUrl;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -66,15 +69,39 @@ try {
 
 if (process.env.SKIP_DATABASE_SEED === "true" || process.env.RENDER === "true") {
   console.log("[setup-db] Skipping demo data seed in Render/production startup to avoid pool-timeout hangs.");
-  console.log("[setup-db] Database ready.");
-  process.exit(0);
+} else {
+  console.log("[setup-db] Seeding demo data and users...");
+  try {
+    await withRetry("Demo database seed", "npx tsx prisma/seed.ts");
+  } catch {
+    console.warn("[setup-db] Demo seed failed after repeated connection retries; continuing without seed data.");
+    console.warn("[setup-db] The app can still start while the database remains reachable for runtime requests.");
+  }
 }
 
-console.log("[setup-db] Seeding demo data and users...");
-try {
-  await withRetry("Demo database seed", "npx tsx prisma/seed.ts");
-  console.log("[setup-db] Database ready.");
-} catch {
-  console.warn("[setup-db] Demo seed failed after repeated connection retries; continuing without seed data.");
-  console.warn("[setup-db] The app can still start while the database remains reachable for runtime requests.");
+if (!realtimeDatabaseUrl) {
+  throw new Error("[setup-db] A PostgreSQL URL is required to configure realtime notifications.");
 }
+
+console.log("[setup-db] Configuring PostgreSQL realtime notifications...");
+const realtimeSql = await readFile(
+  new URL("./realtime-triggers.sql", import.meta.url),
+  "utf8"
+);
+const realtimeClient = new pg.Client({
+  connectionString: realtimeDatabaseUrl,
+  application_name: "ecorewards-realtime-setup",
+});
+
+try {
+  await realtimeClient.connect();
+  await realtimeClient.query(realtimeSql);
+  console.log("[setup-db] Realtime notifications are ready.");
+} catch (error) {
+  console.error("[setup-db] Failed to configure realtime notifications:", error);
+  throw error;
+} finally {
+  await realtimeClient.end();
+}
+
+console.log("[setup-db] Database ready.");
