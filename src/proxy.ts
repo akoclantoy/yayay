@@ -47,9 +47,15 @@ export default auth((req) => {
   }
 
   if (isPublic(path)) {
-    if (isLoggedIn && AUTH_PATHS.includes(path)) {
+    if (
+      isLoggedIn &&
+      (path === "/" || AUTH_PATHS.includes(path))
+    ) {
       const role = session.user.role ?? "RESIDENT";
-      return NextResponse.redirect(new URL(ROLE_DASHBOARD[role], req.url));
+      const destination = ROLE_DASHBOARD[role];
+      if (destination !== path) {
+        return NextResponse.redirect(new URL(destination, req.url));
+      }
     }
     return NextResponse.next();
   }
