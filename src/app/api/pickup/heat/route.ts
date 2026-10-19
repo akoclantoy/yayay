@@ -48,7 +48,7 @@ export async function GET() {
       latitude: cell.latitude,
       longitude: cell.longitude,
       value: cell.count,
-      detail: `${cell.count} pickup${cell.count === 1 ? "" : "s"} in this area`,
+      detail: `${cell.count} pickup${cell.count === 1 ? "" : "s"} · last 90 days · approximate 600 m activity area`,
       kind: "heat",
       }))
   );

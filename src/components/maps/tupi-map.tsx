@@ -20,6 +20,7 @@ export type TupiMapPoint = {
   longitude: number;
   value?: number;
   detail?: string;
+  details?: string[];
   kind?: "barangay" | "pickup" | "heat";
 };
 
@@ -135,12 +136,18 @@ export function TupiLeafletMap({
                 fillColor: color,
                 fillOpacity: isHeat ? 0.22 : 0.8,
               }}
-              eventHandlers={{ click: () => onPointSelect?.(point.id) }}
+              eventHandlers={{
+                click: (event) => {
+                  event.originalEvent.stopPropagation();
+                  onPointSelect?.(point.id);
+                },
+              }}
             >
               <Popup>
                 <div className="space-y-1">
                   <p className="font-semibold">{point.name}</p>
                   {point.detail && <p>{point.detail}</p>}
+                  {point.details?.map((detail) => <p key={detail}>{detail}</p>)}
                 </div>
               </Popup>
             </CircleMarker>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, MapPinned, Recycle, Users } from "lucide-react";
+import { Award, Building2, MapPinned, Recycle, Users } from "lucide-react";
 import { TupiMapClient } from "@/components/maps/tupi-map-client";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,13 +25,28 @@ export function BarangayImpactMap({
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const selectedBarangay = barangays.find((item) => item.id === selected);
+  const rankedBarangays = [...barangays].sort(
+    (left, right) => right.recycledKg - left.recycledKg
+  );
+  const selectedRank = rankedBarangays.findIndex((item) => item.id === selected) + 1;
+  const averageKgPerResident = selectedBarangay && selectedBarangay.residents > 0
+    ? selectedBarangay.recycledKg / selectedBarangay.residents
+    : 0;
+  const averageKgPerCollection = selectedBarangay && selectedBarangay.collections > 0
+    ? selectedBarangay.recycledKg / selectedBarangay.collections
+    : 0;
   const mapPoints = barangays.map((barangay) => ({
     id: barangay.id,
     name: barangay.name,
     latitude: barangay.latitude,
     longitude: barangay.longitude,
     value: barangay.recycledKg,
-    detail: `${formatWeight(barangay.recycledKg)} recycled · ${barangay.collections} collections`,
+    details: [
+      `${formatWeight(barangay.recycledKg)} recycled`,
+      `${barangay.collections} collections`,
+      `${formatPoints(barangay.residents)} registered residents`,
+      `${formatPoints(barangay.pointsEarned)} points earned`,
+    ],
     kind: "barangay" as const,
   }));
 
@@ -58,6 +73,11 @@ export function BarangayImpactMap({
       <CardContent className="grid gap-0 p-0 lg:grid-cols-[minmax(0,1fr)_290px]">
         <TupiMapClient
           points={mapPoints}
+          selected={
+            selectedBarangay
+              ? [selectedBarangay.latitude, selectedBarangay.longitude]
+              : null
+          }
           height={500}
           onPointSelect={(id) => setSelected(id)}
         />
@@ -67,22 +87,67 @@ export function BarangayImpactMap({
             <span className="text-xs text-muted-foreground">{barangays.length} areas</span>
           </div>
           {selectedBarangay && (
-            <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
-              <p className="font-semibold">{selectedBarangay.name}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {selectedBarangay.residents} residents · {selectedBarangay.collections} collections
-              </p>
-              <p className="mt-2 text-sm font-medium text-primary">
-                {formatWeight(selectedBarangay.recycledKg)} recycled
-              </p>
+            <div className="mb-4 space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold">{selectedBarangay.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {selectedBarangay.address}
+                  </p>
+                </div>
+                <Badge variant="secondary" className="shrink-0">
+                  #{selectedRank} by weight
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-background/80 p-2.5">
+                  <p className="text-[11px] text-muted-foreground">Recycled</p>
+                  <p className="mt-0.5 text-sm font-semibold text-primary">
+                    {formatWeight(selectedBarangay.recycledKg)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-background/80 p-2.5">
+                  <p className="text-[11px] text-muted-foreground">Points earned</p>
+                  <p className="mt-0.5 text-sm font-semibold">
+                    {formatPoints(selectedBarangay.pointsEarned)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-background/80 p-2.5">
+                  <p className="text-[11px] text-muted-foreground">Registered residents</p>
+                  <p className="mt-0.5 text-sm font-semibold">
+                    {formatPoints(selectedBarangay.residents)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-background/80 p-2.5">
+                  <p className="text-[11px] text-muted-foreground">Collections logged</p>
+                  <p className="mt-0.5 text-sm font-semibold">
+                    {formatPoints(selectedBarangay.collections)}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2 border-t border-primary/10 pt-3 text-xs">
+                <p className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Average per resident</span>
+                  <span className="font-medium">{formatWeight(averageKgPerResident)}</span>
+                </p>
+                <p className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Average per collection</span>
+                  <span className="font-medium">{formatWeight(averageKgPerCollection)}</span>
+                </p>
+                <p className="flex items-center gap-1.5 text-muted-foreground">
+                  <Award className="h-3.5 w-3.5" />
+                  Map marker size represents total recycled weight.
+                </p>
+              </div>
             </div>
           )}
           <div className="space-y-2">
-            {barangays.map((barangay, index) => (
+            {rankedBarangays.map((barangay, index) => (
               <button
                 key={barangay.id}
                 type="button"
                 onClick={() => setSelected(barangay.id)}
+                aria-pressed={selected === barangay.id}
                 className={`w-full rounded-xl border p-3 text-left transition-colors ${
                   selected === barangay.id
                     ? "border-primary/40 bg-primary/5"
@@ -101,6 +166,9 @@ export function BarangayImpactMap({
                 <div className="mt-2 flex justify-between pl-8 text-xs text-muted-foreground">
                   <span>{barangay.residents} residents</span>
                   <span>{formatWeight(barangay.recycledKg)}</span>
+                </div>
+                <div className="mt-2 pl-8 text-[11px] text-muted-foreground">
+                  {formatPoints(barangay.collections)} collections · {formatPoints(barangay.pointsEarned)} points
                 </div>
               </button>
             ))}

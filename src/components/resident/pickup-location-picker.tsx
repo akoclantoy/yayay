@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { LocateFixed, MapPin, ShieldCheck } from "lucide-react";
+import { Activity, LocateFixed, MapPin, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { TupiMapClient } from "@/components/maps/tupi-map-client";
 import type { TupiMapPoint } from "@/components/maps/tupi-map";
@@ -17,7 +17,9 @@ export function PickupLocationPicker({
   onChange: (location: [number, number]) => void;
 }) {
   const [heatPoints, setHeatPoints] = useState<TupiMapPoint[]>([]);
+  const [selectedHeatId, setSelectedHeatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const selectedHeat = heatPoints.find((point) => point.id === selectedHeatId);
 
   const loadHeat = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch("/api/pickup/heat", { signal, cache: "no-store" });
@@ -82,10 +84,43 @@ export function PickupLocationPicker({
           points={heatPoints}
           selected={value}
           onSelect={selectLocation}
+          onPointSelect={(id) => setSelectedHeatId(id)}
           height={390}
           interactive
           showHeat
         />
+        {selectedHeat && (
+          <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-orange-950 dark:border-orange-900 dark:bg-orange-950/30 dark:text-orange-100">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-700 dark:bg-orange-900/60 dark:text-orange-200">
+                <Activity className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold">Pickup activity nearby</h3>
+                  <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold dark:bg-orange-900/60">
+                    {selectedHeat.value} pickups
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-orange-900/80 dark:text-orange-100/80">
+                  {selectedHeat.detail}
+                </p>
+                <p className="mt-2 text-xs text-orange-900/70 dark:text-orange-100/70">
+                  Approximate cluster center: {selectedHeat.latitude.toFixed(3)}, {selectedHeat.longitude.toFixed(3)}.
+                  This is an aggregated area, not an individual resident&apos;s address.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedHeatId(null)}
+                className="rounded-md px-2 py-1 text-xs font-medium hover:bg-orange-100 dark:hover:bg-orange-900/60"
+                aria-label="Close activity details"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex flex-col justify-between gap-3 rounded-xl border bg-muted/30 p-3 text-sm sm:flex-row sm:items-center">
           <div className="flex items-center gap-2">
             {value ? (
