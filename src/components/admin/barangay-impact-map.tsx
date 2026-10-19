@@ -10,6 +10,7 @@ import { formatPoints, formatWeight } from "@/lib/utils";
 type BarangaySummary = {
   id: string;
   name: string;
+  address: string | null;
   latitude: number;
   longitude: number;
   residents: number;
