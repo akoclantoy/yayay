@@ -49,13 +49,6 @@ if (databaseUrl.includes("user:password@localhost")) {
   process.exit(0);
 }
 
-if (databaseUrl.includes("mysql.railway.internal") || databaseUrl.includes("railway.internal")) {
-  console.error(
-    "[setup-db] DATABASE_URL points to a Railway internal host (mysql.railway.internal). Render cannot reach this hostname. Use the Railway public MySQL connection URL, or move the database to a Render-accessible service."
-  );
-  process.exit(1);
-}
-
 console.log("[setup-db] Applying Prisma schema...");
 // Prisma 7 does not accept --skip-generate in this command; schema generation
 // already happens in the build step, so we only need to push the schema here.
@@ -67,7 +60,7 @@ try {
     "[setup-db] Prisma schema push failed. The app may still start, but database schema sync could be incomplete."
   );
   console.warn(
-    "[setup-db] Check that DATABASE_URL is reachable from Render and not using the internal mysql.railway.internal hostname."
+    "[setup-db] Check that DIRECT_URL is reachable from Render and DATABASE_URL is set for runtime traffic."
   );
 }
 

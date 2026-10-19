@@ -1,4 +1,4 @@
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import { resolveDatabaseConnectionString } from "@/lib/database-url";
 
@@ -7,9 +7,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient(connectionString: string) {
-  const adapter = new PrismaMariaDb(
-    connectionString.replace(/^mysql:/, "mariadb:")
-  );
+  const adapter = new PrismaPg({ connectionString });
 
   return new PrismaClient({
     adapter,

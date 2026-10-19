@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
 }
 
 enum UserRole {
@@ -365,7 +365,7 @@ model RedemptionRequest {
   rewardId  String
   points    Int
   status    RedemptionStatus @default(PENDING)
-  notes     String?          @db.LongText
+  notes     String?          @db.Text
   fulfilledAt DateTime?
   deletedAt DateTime?
   createdAt DateTime         @default(now())

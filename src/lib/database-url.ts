@@ -1,4 +1,4 @@
-/** Resolve the Railway MySQL URL used by Prisma and the MariaDB adapter. */
+/** Resolve the pooled runtime URL, falling back to the direct database URL. */
 export function resolveDatabaseConnectionString(
   url = process.env.DATABASE_URL
 ): string | undefined {

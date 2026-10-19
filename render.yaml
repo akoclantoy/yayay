@@ -19,14 +19,15 @@ services:
         value: production
       - key: DATABASE_URL
         sync: false
+      - key: DIRECT_URL
+        sync: false
       - key: AUTH_SECRET
         generateValue: true
       - key: AUTH_TRUST_HOST
         value: "true"
       # Set NEXTAUTH_URL in Render Dashboard to your public service URL, e.g. https://your-app.onrender.com.
       # Do not hardcode a specific hostname in the repo; Render assigns the final domain at deploy time.
-      # Set DATABASE_URL to a reachable public MySQL URL from Railway or another host that Render can access.
-      # Do NOT use mysql.railway.internal from Render; it is not reachable from Render services.
+      # Set DATABASE_URL to the pooled PostgreSQL URL and DIRECT_URL to the direct/session URL.
       # Set in Render Dashboard → Environment (not committed):
       # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET — Gmail / Google sign-in
       # GEMINI_API_KEY — AI assistant & waste classification

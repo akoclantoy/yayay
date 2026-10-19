@@ -12,6 +12,6 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env.DATABASE_URL ?? "mysql://root:password@localhost:3306/ecorewards",
+    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
   },
 });

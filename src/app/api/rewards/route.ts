@@ -94,7 +94,7 @@ export async function POST(request: Request) {
         uploadedQrUrl = uploadedQr.url;
       } catch {
         // Keep the compressed image in the redemption metadata when Cloudinary is unavailable.
-        // RedemptionRequest.notes is LONGTEXT, so the request can still reach admin review.
+        // Keep the compressed image in request metadata so admin review can continue.
       }
 
       const gcashReward = await ensureGcashReward();

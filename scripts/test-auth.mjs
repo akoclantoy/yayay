@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-import mariadb from "mariadb";
+import pg from "pg";
 import bcrypt from "bcryptjs";
 
 config({ path: ".env.local" });
@@ -11,22 +11,22 @@ if (!cs) {
   process.exit(1);
 }
 
-const pool = mariadb.createPool(cs.replace(/^mysql:/, "mariadb:"));
+const pool = new pg.Pool({ connectionString: cs });
 
 try {
   await pool.query("SELECT 1");
   console.log("DB connected");
 
-  const users = await pool.query(
-    "SELECT email, `passwordHash` IS NOT NULL AS has_password, `emailVerified` IS NOT NULL AS verified, `isActive` FROM `User` ORDER BY email"
+  const { rows: users } = await pool.query(
+    'SELECT email, "passwordHash" IS NOT NULL AS has_password, "emailVerified" IS NOT NULL AS verified, "isActive" FROM "User" ORDER BY email'
   );
   console.log("Users:", users.length);
-  for (const u of users) console.log(" ", u);
+  for (const user of users) console.log(" ", user);
 
   const admin = users.find((u) => u.email === "admin@example.com");
   if (admin?.has_password) {
-    const rows = await pool.query(
-      "SELECT `passwordHash` FROM `User` WHERE email = ?",
+    const { rows } = await pool.query(
+      'SELECT "passwordHash" FROM "User" WHERE email = $1',
       ["admin@example.com"]
     );
     const ok = await bcrypt.compare("Admin123!", rows[0].passwordHash);

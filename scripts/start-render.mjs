@@ -13,12 +13,20 @@ export function assertRenderRuntimeConfig(currentEnv = process.env) {
   }
 
   const databaseUrl = currentEnv.DATABASE_URL ?? currentEnv.DIRECT_URL;
-  if (
-    !databaseUrl ||
-    /user:password@localhost|mysql:\/\/root:password@localhost|railway\.internal/i.test(databaseUrl)
-  ) {
+  let isValidPostgresUrl = false;
+  try {
+    const parsedUrl = new URL(databaseUrl);
+    isValidPostgresUrl =
+      ["postgres:", "postgresql:"].includes(parsedUrl.protocol) &&
+      !["localhost", "127.0.0.1", "::1"].includes(parsedUrl.hostname) &&
+      parsedUrl.password !== "password";
+  } catch {
+    isValidPostgresUrl = false;
+  }
+
+  if (!isValidPostgresUrl) {
     throw new Error(
-      "[start-render] Missing or invalid DATABASE_URL for Render. Set a reachable database URL in Render > Environment."
+      "[start-render] Missing or invalid PostgreSQL URL for Render. Set DATABASE_URL in Render > Environment."
     );
   }
 

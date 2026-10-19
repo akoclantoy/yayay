@@ -25,7 +25,21 @@ test("production startup accepts valid render config", () => {
       PORT: "3000",
       AUTH_SECRET: "test-secret",
       NEXTAUTH_URL: "https://example.onrender.com",
-      DATABASE_URL: "mysql://user:pass@db.example.com:3306/ecorewards",
+      DATABASE_URL: "postgresql://user:pass@db.example.com:5432/ecorewards",
     })
+  );
+});
+
+test("production startup rejects a MySQL database url", () => {
+  assert.throws(
+    () =>
+      assertRenderRuntimeConfig({
+        RENDER: "true",
+        NODE_ENV: "production",
+        AUTH_SECRET: "test-secret",
+        NEXTAUTH_URL: "https://example.onrender.com",
+        DATABASE_URL: "mysql://user:pass@db.example.com:3306/ecorewards",
+      }),
+    /PostgreSQL URL/
   );
 });
