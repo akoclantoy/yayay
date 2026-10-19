@@ -173,6 +173,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = (user as { role?: UserRole }).role ?? "RESIDENT";
       }
 
+      if (trigger === "update" && token.id) {
+        try {
+          const dbUser = await db.user.findUnique({
+            where: { id: token.id as string },
+            select: { image: true },
+          });
+          if (dbUser) token.picture = dbUser.image;
+        } catch (error) {
+          console.error("[auth:jwt:image-refresh]", error);
+        }
+      }
+
       if (trigger === "update" && session?.role) {
         token.role = session.role as UserRole;
       }
