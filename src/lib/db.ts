@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient(connectionString: string) {
-  const adapter = new PrismaPg({ connectionString });
+  const adapter = new PrismaPg({ connectionString }, { schema: "ecorewards" });
 
   return new PrismaClient({
     adapter,

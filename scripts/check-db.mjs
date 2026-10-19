@@ -19,14 +19,14 @@ try {
   console.log("Database connection successful.");
 
   const { rows: tables } = await pool.query(
-    `SELECT to_regclass('"public"."User"') IS NOT NULL AS exists`
+    `SELECT to_regclass('ecorewards."User"') IS NOT NULL AS exists`
   );
 
   if (!tables[0].exists) {
     console.warn("Connected, but schema is missing. Run: npm run db:setup");
     process.exitCode = 1;
   } else {
-    const { rows: users } = await pool.query('SELECT COUNT(*)::int AS count FROM "User"');
+    const { rows: users } = await pool.query('SELECT COUNT(*)::int AS count FROM ecorewards."User"');
     console.log(`User table exists with ${users[0].count} users.`);
   }
 } catch (error) {

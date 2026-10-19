@@ -18,7 +18,7 @@ try {
   console.log("DB connected");
 
   const { rows: users } = await pool.query(
-    'SELECT email, "passwordHash" IS NOT NULL AS has_password, "emailVerified" IS NOT NULL AS verified, "isActive" FROM "User" ORDER BY email'
+    'SELECT email, "passwordHash" IS NOT NULL AS has_password, "emailVerified" IS NOT NULL AS verified, "isActive" FROM ecorewards."User" ORDER BY email'
   );
   console.log("Users:", users.length);
   for (const user of users) console.log(" ", user);
@@ -26,7 +26,7 @@ try {
   const admin = users.find((u) => u.email === "admin@example.com");
   if (admin?.has_password) {
     const { rows } = await pool.query(
-      'SELECT "passwordHash" FROM "User" WHERE email = $1',
+      'SELECT "passwordHash" FROM ecorewards."User" WHERE email = $1',
       ["admin@example.com"]
     );
     const ok = await bcrypt.compare("Admin123!", rows[0].passwordHash);

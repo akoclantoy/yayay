@@ -55,7 +55,7 @@ console.log("[setup-db] Applying Prisma schema...");
 try {
   await withRetry("Prisma schema push", "npx prisma db push");
   console.log("[setup-db] Prisma schema is ready.");
-} catch (error) {
+} catch {
   console.warn(
     "[setup-db] Prisma schema push failed. The app may still start, but database schema sync could be incomplete."
   );
@@ -74,7 +74,7 @@ console.log("[setup-db] Seeding demo data and users...");
 try {
   await withRetry("Demo database seed", "npx tsx prisma/seed.ts");
   console.log("[setup-db] Database ready.");
-} catch (error) {
+} catch {
   console.warn("[setup-db] Demo seed failed after repeated connection retries; continuing without seed data.");
   console.warn("[setup-db] The app can still start while the database remains reachable for runtime requests.");
 }
