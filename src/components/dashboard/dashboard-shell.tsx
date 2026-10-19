@@ -17,6 +17,7 @@ import {
   Award,
   Leaf,
   Bell,
+  MessageCircle,
   User,
   QrCode,
   ScanLine,
@@ -45,6 +46,7 @@ const RESIDENT_NAV: NavItem[] = [
   { href: "/resident/qr-card", label: "QR Card", icon: QrCode },
   { href: "/resident/history", label: "Collection History", icon: History },
   { href: "/resident/pickup", label: "Request Pickup", icon: Truck },
+  { href: "/resident/messages", label: "Messenger", icon: MessageCircle },
   { href: "/resident/schedule", label: "Schedule", icon: Calendar },
   { href: "/resident/leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/resident/badges", label: "Badges", icon: Award },
@@ -58,6 +60,7 @@ const STAFF_NAV: NavItem[] = [
   { href: "/staff/scan", label: "Scan QR", icon: ScanLine },
   { href: "/staff/record", label: "Record Recycling", icon: ClipboardList },
   { href: "/staff/pickups", label: "Manage Pickups", icon: Truck },
+  { href: "/staff/messages", label: "Messenger", icon: MessageCircle },
   { href: "/staff/reports", label: "Reports", icon: History },
 ];
 
@@ -234,9 +237,23 @@ export function DashboardShell({
             <p className="truncate text-sm font-semibold">{activeItem?.label ?? context.label}</p>
           </div>
           {role === "RESIDENT" && (
-            <Link href="/resident/notifications" aria-label="View notifications">
+            <>
+              <Link href="/resident/messages" aria-label="Open messenger">
+                <Button variant="ghost" size="icon" className="text-muted-foreground">
+                  <MessageCircle />
+                </Button>
+              </Link>
+              <Link href="/resident/notifications" aria-label="View notifications">
+                <Button variant="ghost" size="icon" className="text-muted-foreground">
+                  <Bell />
+                </Button>
+              </Link>
+            </>
+          )}
+          {(role === "COLLECTION_STAFF" || role === "BARANGAY_STAFF") && (
+            <Link href="/staff/messages" aria-label="Open messenger">
               <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <Bell />
+                <MessageCircle />
               </Button>
             </Link>
           )}

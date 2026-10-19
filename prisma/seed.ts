@@ -2,6 +2,7 @@ import { config } from "dotenv";
 import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
 import { DEFAULT_WASTE_CATEGORIES } from "../src/lib/constants";
+import { TUPI_BARANGAYS, tupiBarangayCode } from "../src/lib/tupi";
 
 config({ path: ".env.local" });
 config();
@@ -53,18 +54,32 @@ async function main() {
   });
 
   // Barangays
-  const barangay = await db.barangay.upsert({
-    where: { code: "BRGY-SJ-001" },
-    update: {},
-    create: {
-      name: "Barangay San Jose",
-      code: "BRGY-SJ-001",
-      address: "San Jose, Metro City",
-      latitude: 14.5995,
-      longitude: 120.9842,
-      population: 12500,
-    },
-  });
+  const barangays = await Promise.all(
+    TUPI_BARANGAYS.map((item) =>
+      db.barangay.upsert({
+        where: { code: tupiBarangayCode(item.name) },
+        update: {
+          name: item.name,
+          description: "Barangay in the Municipality of Tupi, South Cotabato",
+          address: `${item.name}, Tupi, South Cotabato`,
+          latitude: item.latitude,
+          longitude: item.longitude,
+          isActive: true,
+          deletedAt: null,
+        },
+        create: {
+          name: item.name,
+          code: tupiBarangayCode(item.name),
+          description: "Barangay in the Municipality of Tupi, South Cotabato",
+          address: `${item.name}, Tupi, South Cotabato`,
+          latitude: item.latitude,
+          longitude: item.longitude,
+        },
+      })
+    )
+  );
+  const barangay = barangays.find((item) => item.name === "Poblacion");
+  if (!barangay) throw new Error("Tupi Poblacion barangay is missing");
 
   // Collection center
   const center = await db.collectionCenter.upsert({
@@ -72,11 +87,11 @@ async function main() {
     update: {},
     create: {
       id: "seed-center-001",
-      name: "San Jose Eco Hub",
-      address: "123 Green Street, Barangay San Jose",
+      name: "Tupi Eco Hub",
+      address: "Poblacion, Tupi, South Cotabato",
       barangayId: barangay.id,
-      latitude: 14.5995,
-      longitude: 120.9842,
+      latitude: barangay.latitude ?? 6.3313349,
+      longitude: barangay.longitude ?? 124.9511647,
       phone: "+63 2 8123 4567",
       openHours: "Mon-Sat 8AM-5PM",
       capacityKg: 5000,

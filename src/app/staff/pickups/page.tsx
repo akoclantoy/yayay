@@ -5,6 +5,10 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { TupiMapClient } from "@/components/maps/tupi-map-client";
+import type { TupiMapPoint } from "@/components/maps/tupi-map";
+import { MessageCircle, MapPinned } from "lucide-react";
+import Link from "next/link";
 
 type Pickup = {
   id: string;
@@ -12,6 +16,10 @@ type Pickup = {
   status: string;
   scheduledDate: string | null;
   wasteNotes: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  assignedStaffId: string | null;
+  assignedStaff: { name: string | null } | null;
   createdAt: string;
   user: { name: string | null; email: string; phone: string | null };
 };
@@ -25,7 +33,7 @@ export default function StaffPickupsPage() {
   useEffect(() => {
     fetch("/api/pickup")
       .then((r) => r.json())
-      .then(setPickups)
+      .then((data: Pickup[]) => setPickups(data))
       .finally(() => setLoading(false));
   }, []);
 
@@ -37,19 +45,49 @@ export default function StaffPickupsPage() {
         body: JSON.stringify({ id, status }),
       });
       if (!res.ok) throw new Error("Failed");
-      setPickups((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
+      const updated = (await res.json()) as { assignedStaffId: string | null };
+      setPickups((prev) => prev.map((p) => (p.id === id ? {
+        ...p,
+        status,
+        assignedStaffId: updated.assignedStaffId,
+        assignedStaff: updated.assignedStaffId ? { name: "You" } : null,
+      } : p)));
       toast.success(`Status updated to ${status}`);
     } catch {
       toast.error("Update failed");
     }
   }
 
+  const mapPoints: TupiMapPoint[] = pickups.flatMap((pickup) => {
+    if (pickup.latitude === null || pickup.longitude === null) return [];
+    return [{
+      id: pickup.id,
+      name: pickup.user.name ?? pickup.user.email,
+      latitude: pickup.latitude,
+      longitude: pickup.longitude,
+      detail: `${pickup.status} · ${pickup.address}`,
+      kind: "pickup",
+    }];
+  });
+
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Manage Pickups</h1>
         <p className="text-muted-foreground">Review and update pickup requests</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MapPinned className="h-5 w-5 text-primary" /> Pickup locations in Tupi
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">Exact pickup pins are visible only to authorized pickup staff and admins.</p>
+        </CardHeader>
+        <CardContent>
+          <TupiMapClient points={mapPoints} height={400} />
+        </CardContent>
+      </Card>
 
       {loading ? (
         <p className="text-muted-foreground">Loading...</p>
@@ -67,14 +105,26 @@ export default function StaffPickupsPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <p>{p.address}</p>
+                {p.assignedStaff && <p className="text-xs text-muted-foreground">Assigned to {p.assignedStaff.name ?? "staff"}</p>}
                 {p.wasteNotes && <p className="text-muted-foreground">{p.wasteNotes}</p>}
                 {p.scheduledDate && (
                   <p>Scheduled: {new Date(p.scheduledDate).toLocaleString()}</p>
                 )}
+                <Link
+                  href={`/staff/messages?pickupId=${encodeURIComponent(p.id)}`}
+                  className="inline-flex items-center gap-2 pt-1 font-medium text-primary hover:underline"
+                >
+                  <MessageCircle className="h-4 w-4" /> Open pickup conversation
+                </Link>
                 <p className="text-xs text-muted-foreground">
                   Requested {new Date(p.createdAt).toLocaleString()}
                 </p>
                 <div className="flex flex-wrap gap-2 pt-2">
+                  {!p.assignedStaffId && p.status !== "CANCELLED" && (
+                    <Button variant="default" size="sm" onClick={() => updateStatus(p.id, p.status)}>
+                      Assign to me
+                    </Button>
+                  )}
                   {STATUSES.filter((s) => s !== p.status).map((s) => (
                     <Button key={s} variant="outline" size="sm" onClick={() => updateStatus(p.id, s)}>
                       Mark {s.toLowerCase()}

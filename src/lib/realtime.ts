@@ -1,5 +1,6 @@
 import { Client } from "pg";
 import { resolveDatabaseConnectionString } from "@/lib/database-url";
+import { deliverDuePickupReminders } from "@/lib/pickup-reminders";
 
 type Subscriber = () => void;
 
@@ -7,6 +8,7 @@ type RealtimeHub = {
   client: Client | null;
   connecting: Promise<void> | null;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
+  reminderTimer: ReturnType<typeof setInterval> | null;
   subscribers: Set<Subscriber>;
 };
 
@@ -20,6 +22,7 @@ const hub =
     client: null,
     connecting: null,
     reconnectTimer: null,
+    reminderTimer: null,
     subscribers: new Set<Subscriber>(),
   });
 
@@ -31,6 +34,16 @@ function notifySubscribers() {
       console.error("[realtime] Failed to notify a connected client:", error);
     }
   }
+}
+
+function runDuePickupReminderCheck() {
+  void deliverDuePickupReminders()
+    .then((delivered) => {
+      if (delivered > 0) notifySubscribers();
+    })
+    .catch((error: unknown) => {
+      console.error("[realtime] Could not deliver due pickup reminders:", error);
+    });
 }
 
 function scheduleReconnect() {
@@ -89,6 +102,11 @@ function ensureListener() {
       });
 
       hub.client = client;
+      runDuePickupReminderCheck();
+      if (!hub.reminderTimer) {
+        hub.reminderTimer = setInterval(runDuePickupReminderCheck, 30_000);
+        hub.reminderTimer.unref();
+      }
       notifySubscribers();
     } catch (error) {
       console.error("[realtime] Could not start the PostgreSQL listener:", error);

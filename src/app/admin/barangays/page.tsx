@@ -1,37 +1,48 @@
-import { db } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { BarangayImpactMap } from "@/components/admin/barangay-impact-map";
+import { formatPoints, formatWeight } from "@/lib/utils";
+import { getTupiBarangayActivity } from "@/lib/tupi-activity";
 
 export default async function AdminBarangaysPage() {
-  const barangays = await db.barangay.findMany({
-    where: { deletedAt: null },
-    orderBy: { name: "asc" },
-    include: { _count: { select: { residents: true, collectionCenters: true } } },
-  });
+  const barangays = await getTupiBarangayActivity();
+  const mostActive = [...barangays].sort((a, b) => b.recycledKg - a.recycledKg)[0];
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="mx-auto max-w-7xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Manage Barangays</h1>
-        <p className="text-muted-foreground">{barangays.length} barangays registered</p>
+        <h1 className="text-3xl font-bold tracking-tight">Tupi barangays</h1>
+        <p className="mt-1 text-muted-foreground">
+          Explore resident participation and recycling activity across Tupi, South Cotabato.
+        </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
+      {mostActive && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card><CardContent className="pt-5"><p className="text-sm text-muted-foreground">Tupi barangays</p><p className="mt-1 text-2xl font-bold">{barangays.length}</p></CardContent></Card>
+          <Card><CardContent className="pt-5"><p className="text-sm text-muted-foreground">Registered residents</p><p className="mt-1 text-2xl font-bold">{formatPoints(barangays.reduce((total, item) => total + item.residents, 0))}</p></CardContent></Card>
+          <Card><CardContent className="pt-5"><p className="text-sm text-muted-foreground">Most active by recycled weight</p><p className="mt-1 text-2xl font-bold">{mostActive.name}</p><p className="text-sm text-primary">{formatWeight(mostActive.recycledKg)} recycled</p></CardContent></Card>
+        </div>
+      )}
+
+      <BarangayImpactMap barangays={barangays} />
+
+      <div className="grid gap-4 md:grid-cols-2">
         {barangays.map((b) => (
           <Card key={b.id}>
             <CardHeader>
               <div className="flex justify-between items-start">
                 <CardTitle>{b.name}</CardTitle>
-                <Badge variant={b.isActive ? "success" : "warning"}>
-                  {b.isActive ? "Active" : "Inactive"}
+                <Badge variant={b.residents > 0 ? "success" : "secondary"}>
+                  {b.residents > 0 ? "Active" : "Awaiting residents"}
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground font-mono">{b.code}</p>
             </CardHeader>
             <CardContent className="text-sm space-y-1">
               {b.address && <p>{b.address}</p>}
-              <p>{b._count.residents} residents · {b._count.collectionCenters} centers</p>
-              {b.population && <p>Population: {b.population.toLocaleString()}</p>}
+              <p>{formatPoints(b.residents)} residents · {formatPoints(b.centers)} centers</p>
+              <p>{formatWeight(b.recycledKg)} recycled · {formatPoints(b.collections)} collections</p>
             </CardContent>
           </Card>
         ))}

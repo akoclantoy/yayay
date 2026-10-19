@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PickupLocationPicker } from "@/components/resident/pickup-location-picker";
 
 export default function PickupPage() {
   const router = useRouter();
@@ -15,9 +16,14 @@ export default function PickupPage() {
   const [address, setAddress] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
   const [wasteNotes, setWasteNotes] = useState("");
+  const [location, setLocation] = useState<[number, number] | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!location) {
+      toast.error("Pin your pickup location on the Tupi map first.");
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/pickup", {
@@ -27,6 +33,8 @@ export default function PickupPage() {
           address,
           wasteNotes,
           scheduledDate: scheduledDate ? new Date(scheduledDate).toISOString() : undefined,
+          latitude: location[0],
+          longitude: location[1],
         }),
       });
       if (!res.ok) {
@@ -38,6 +46,7 @@ export default function PickupPage() {
       setAddress("");
       setScheduledDate("");
       setWasteNotes("");
+      setLocation(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Request failed");
     } finally {
@@ -46,13 +55,15 @@ export default function PickupPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Request Pickup</h1>
         <p className="text-muted-foreground">
           Schedule a home collection for your recyclable materials
         </p>
       </div>
+
+      <PickupLocationPicker value={location} onChange={setLocation} />
 
       <Card>
         <CardHeader>
@@ -61,21 +72,22 @@ export default function PickupPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="address">Pickup address</Label>
+              <Label htmlFor="address">Street and house address</Label>
               <Input
                 id="address"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="House no., street, barangay"
+                placeholder="House number, street, purok"
                 required
               />
             </div>
             <div>
-              <Label htmlFor="date">Preferred date (optional)</Label>
+              <Label htmlFor="date">Preferred pickup date and time</Label>
               <Input
                 id="date"
                 type="datetime-local"
                 value={scheduledDate}
+                min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
                 onChange={(e) => setScheduledDate(e.target.value)}
               />
             </div>
@@ -88,7 +100,7 @@ export default function PickupPage() {
                 placeholder="e.g. 5kg plastic bottles, 3kg cardboard..."
               />
             </div>
-            <Button type="submit" disabled={loading} className="w-full">
+            <Button type="submit" disabled={loading || !location} className="w-full">
               {loading ? "Submitting..." : "Submit pickup request"}
             </Button>
           </form>

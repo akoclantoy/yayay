@@ -88,6 +88,10 @@ const realtimeSql = await readFile(
   new URL("./realtime-triggers.sql", import.meta.url),
   "utf8"
 );
+const tupiBootstrapSql = await readFile(
+  new URL("./tupi-bootstrap.sql", import.meta.url),
+  "utf8"
+);
 const realtimeClient = new pg.Client({
   connectionString: realtimeDatabaseUrl,
   application_name: "ecorewards-realtime-setup",
@@ -95,6 +99,8 @@ const realtimeClient = new pg.Client({
 
 try {
   await realtimeClient.connect();
+  await realtimeClient.query(tupiBootstrapSql);
+  console.log("[setup-db] Tupi barangays and existing pickup conversations are ready.");
   await realtimeClient.query(realtimeSql);
   console.log("[setup-db] Realtime notifications are ready.");
 } catch (error) {

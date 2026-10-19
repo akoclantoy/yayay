@@ -17,7 +17,7 @@ export default async function ProfilePage() {
       include: { barangay: true },
     }),
     db.barangay.findMany({
-      where: { isActive: true, deletedAt: null },
+      where: { code: { startsWith: "TUPI-" }, isActive: true, deletedAt: null },
       orderBy: { name: "asc" },
     }),
   ]);

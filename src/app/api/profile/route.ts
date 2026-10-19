@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
@@ -12,7 +12,7 @@ const schema = z.object({
 });
 
 export async function PATCH(request: Request) {
-  const authResult = await requireSession();
+  const authResult = await requireRole(["RESIDENT"]);
   if ("error" in authResult) return authResult.error;
 
   try {
@@ -22,7 +22,12 @@ export async function PATCH(request: Request) {
 
     if (barangayId) {
       const barangay = await db.barangay.findFirst({
-        where: { id: barangayId, isActive: true, deletedAt: null },
+        where: {
+          id: barangayId,
+          code: { startsWith: "TUPI-" },
+          isActive: true,
+          deletedAt: null,
+        },
         select: { id: true },
       });
       if (!barangay) {
@@ -30,29 +35,31 @@ export async function PATCH(request: Request) {
       }
     }
 
-    if (data.name || data.phone) {
-      await db.user.update({
-        where: { id: userId },
-        data: {
-          name: data.name,
-          phone: data.phone,
+    await db.$transaction(async (tx) => {
+      if (data.name || data.phone) {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            name: data.name,
+            phone: data.phone,
+          },
+        });
+      }
+
+      await tx.residentProfile.upsert({
+        where: { userId },
+        update: {
+          address: data.address,
+          houseNumber: data.houseNumber,
+          barangayId,
+        },
+        create: {
+          userId,
+          address: data.address,
+          houseNumber: data.houseNumber,
+          barangayId,
         },
       });
-    }
-
-    await db.residentProfile.upsert({
-      where: { userId },
-      update: {
-        address: data.address,
-        houseNumber: data.houseNumber,
-        barangayId,
-      },
-      create: {
-        userId,
-        address: data.address,
-        houseNumber: data.houseNumber,
-        barangayId,
-      },
     });
 
     return NextResponse.json({ success: true });

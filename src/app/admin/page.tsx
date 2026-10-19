@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { formatPoints, formatWeight } from "@/lib/utils";
+import { BarangayImpactMap } from "@/components/admin/barangay-impact-map";
+import { getTupiBarangayActivity } from "@/lib/tupi-activity";
 import { Users, Recycle, Wallet, Building2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -16,14 +18,17 @@ export default async function AdminDashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [residents, records, redemptions, barangays] = await Promise.all([
+  const [residents, records, redemptions, barangays, tupiActivity] = await Promise.all([
     db.user.count({ where: { role: "RESIDENT", deletedAt: null } }),
     db.recyclingRecord.aggregate({
       where: { deletedAt: null },
       _sum: { weightKg: true, pointsEarned: true },
     }),
     db.redemptionRequest.count({ where: { status: "PENDING" } }),
-    db.barangay.count({ where: { deletedAt: null, isActive: true } }),
+    db.barangay.count({
+      where: { code: { startsWith: "TUPI-" }, deletedAt: null, isActive: true },
+    }),
+    getTupiBarangayActivity(),
   ]);
 
   const stats = [
@@ -59,6 +64,8 @@ export default async function AdminDashboardPage() {
           </StaggerItem>
         ))}
       </StaggerGrid>
+
+      <BarangayImpactMap barangays={tupiActivity} />
 
       {redemptions > 0 && (
         <FadeInSection delay={0.18}>
