@@ -36,6 +36,36 @@ type Conversation = {
 
 type MessageResponse = { conversation: Conversation; messages: Message[] };
 
+function isMessage(value: unknown): value is Message {
+  if (typeof value !== "object" || value === null) return false;
+  const message = value as Partial<Message>;
+  return (
+    typeof message.id === "string" &&
+    (typeof message.content === "string" || message.content === null) &&
+    (typeof message.imageUrl === "string" || message.imageUrl === null) &&
+    typeof message.systemMessage === "boolean" &&
+    (typeof message.editedAt === "string" || message.editedAt === null) &&
+    typeof message.createdAt === "string" &&
+    typeof message.sender === "object" &&
+    message.sender !== null &&
+    typeof message.sender.id === "string" &&
+    (typeof message.sender.name === "string" || message.sender.name === null) &&
+    typeof message.sender.role === "string"
+  );
+}
+
+function responseError(value: unknown, fallback: string) {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "error" in value &&
+    typeof value.error === "string"
+  ) {
+    return value.error;
+  }
+  return fallback;
+}
+
 function localDate(value: string) {
   return new Date(value).toLocaleString([], {
     dateStyle: "medium",
@@ -127,9 +157,11 @@ export function PickupMessenger({ userId }: { userId: string }) {
       if (content.trim()) form.set("content", content.trim());
       if (image) form.set("image", image);
       const response = await fetch("/api/messages", { method: "POST", body: form });
-      const data = (await response.json()) as Message | { error?: string };
-      if (!response.ok) throw new Error("error" in data ? data.error ?? "Message could not be sent." : "Message could not be sent.");
-      setMessages((previous) => [...previous, data as Message]);
+      const data: unknown = await response.json();
+      if (!response.ok || !isMessage(data)) {
+        throw new Error(responseError(data, "Message could not be sent."));
+      }
+      setMessages((previous) => [...previous, data]);
       setContent("");
       setImage(null);
       if (fileRef.current) fileRef.current.value = "";
@@ -148,9 +180,11 @@ export function PickupMessenger({ userId }: { userId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId, content: editContent }),
       });
-      const data = (await response.json()) as Message | { error?: string };
-      if (!response.ok) throw new Error("error" in data ? data.error ?? "Could not edit message." : "Could not edit message.");
-      setMessages((previous) => previous.map((message) => (message.id === messageId ? (data as Message) : message)));
+      const data: unknown = await response.json();
+      if (!response.ok || !isMessage(data)) {
+        throw new Error(responseError(data, "Could not edit message."));
+      }
+      setMessages((previous) => previous.map((message) => (message.id === messageId ? data : message)));
       setEditId("");
       setEditContent("");
     } catch (error) {
@@ -200,7 +234,7 @@ export function PickupMessenger({ userId }: { userId: string }) {
             conversations.map((conversation) => {
               const otherName =
                 conversation.resident.id === userId
-                  ? conversation.staff?.name ?? "Awaiting staff"
+                  ? conversation.staff?.name ?? conversation.pickup.assignedStaff?.name ?? "Awaiting staff"
                   : conversation.resident.name ?? "Resident";
               const preview = conversation.messages[0];
               return (
@@ -238,7 +272,7 @@ export function PickupMessenger({ userId }: { userId: string }) {
                 <div>
                   <CardTitle className="text-lg">
                     {activeConversation.resident.id === userId
-                      ? activeConversation.staff?.name ?? "Pickup support"
+                      ? activeConversation.staff?.name ?? activeConversation.pickup.assignedStaff?.name ?? "Pickup support"
                       : activeConversation.resident.name ?? "Resident"}
                   </CardTitle>
                   <p className="mt-1 text-sm text-muted-foreground">{activeConversation.pickup.address}</p>

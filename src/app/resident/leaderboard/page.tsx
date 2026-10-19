@@ -12,7 +12,10 @@ export default async function LeaderboardPage() {
 
   const [topResidents, myProfile, barangayActivity] = await Promise.all([
     db.residentProfile.findMany({
-      where: { barangay: { code: { startsWith: "TUPI-" } } },
+      where: {
+        barangay: { is: { code: { startsWith: "TUPI-" } } },
+        user: { is: { deletedAt: null, isActive: true } },
+      },
       orderBy: [{ environmentalScore: "desc" }, { totalWeightKg: "desc" }],
       take: 100,
       include: {
@@ -48,7 +51,7 @@ export default async function LeaderboardPage() {
               <Trophy className="h-5 w-5 text-warning" />
               Tupi resident leaderboard
             </CardTitle>
-            <p className="text-sm text-muted-foreground">Top 100 residents across Tupi barangays, ranked by environmental score.</p>
+            <p className="text-sm text-muted-foreground">The top 10 residents across Tupi barangays, ranked by environmental score.</p>
           </CardHeader>
           <CardContent className="space-y-2">
             {topResidents.slice(0, 10).map((r, i) => (

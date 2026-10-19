@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireSession } from "@/lib/api-auth";
+import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { deleteImage, uploadImage } from "@/lib/cloudinary";
 import { deliverDuePickupReminders } from "@/lib/pickup-reminders";
@@ -18,28 +18,40 @@ const editSchema = z.object({
 });
 const removeSchema = z.object({ messageId: z.string().min(1) });
 
-async function findConversationForUser(conversationId: string, userId: string, role: string) {
+async function findConversationForUser(
+  conversationId: string,
+  userId: string,
+  role: string
+) {
   const where =
     role === "RESIDENT"
-      ? { id: conversationId, residentId: userId, pickup: { deletedAt: null } }
+      ? { id: conversationId, residentId: userId, pickup: { is: { deletedAt: null } } }
       : role === "ADMIN"
-        ? { id: conversationId, pickup: { deletedAt: null } }
+        ? { id: conversationId, pickup: { is: { deletedAt: null } } }
         : {
             id: conversationId,
-            pickup: { deletedAt: null },
-            OR: [{ staffId: userId }, { pickup: { assignedStaffId: userId } }],
+            pickup: { is: { deletedAt: null } },
+            OR: [{ staffId: userId }, { pickup: { is: { assignedStaffId: userId } } }],
           };
 
   return db.conversation.findFirst({
     where,
     include: {
-      pickup: { select: { id: true, userId: true, address: true, status: true } },
+      pickup: {
+        select: {
+          id: true,
+          userId: true,
+          assignedStaffId: true,
+          address: true,
+          status: true,
+        },
+      },
     },
   });
 }
 
 export async function GET(request: Request) {
-  const authResult = await requireSession();
+  const authResult = await requireRole(["RESIDENT", "COLLECTION_STAFF", "BARANGAY_STAFF", "ADMIN"]);
   if ("error" in authResult) return authResult.error;
   const { id: userId, role } = authResult.session.user;
 
@@ -63,9 +75,14 @@ export async function GET(request: Request) {
       ? { residentId: userId }
       : role === "ADMIN"
         ? {}
-        : { OR: [{ staffId: userId }, { pickup: { assignedStaffId: userId } }] };
+        : {
+            OR: [
+              { staffId: userId },
+              { pickup: { is: { assignedStaffId: userId } } },
+            ],
+          };
   const conversations = await db.conversation.findMany({
-    where: { ...participantFilter, pickup: { deletedAt: null } },
+    where: { ...participantFilter, pickup: { is: { deletedAt: null } } },
     orderBy: { updatedAt: "desc" },
     include: {
       pickup: {
@@ -92,7 +109,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const authResult = await requireSession();
+  const authResult = await requireRole(["RESIDENT", "COLLECTION_STAFF", "BARANGAY_STAFF", "ADMIN"]);
   if ("error" in authResult) return authResult.error;
   const { id: userId, role } = authResult.session.user;
 
@@ -142,7 +159,7 @@ export async function POST(request: Request) {
 
     const recipientId =
       userId === conversation.residentId
-        ? conversation.staffId
+        ? conversation.staffId ?? conversation.pickup.assignedStaffId
         : conversation.residentId;
     const saved = await db.$transaction(async (tx) => {
       const message = await tx.conversationMessage.create({
@@ -190,7 +207,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const authResult = await requireSession();
+  const authResult = await requireRole(["RESIDENT", "COLLECTION_STAFF", "BARANGAY_STAFF", "ADMIN"]);
   if ("error" in authResult) return authResult.error;
   try {
     const parsed = editSchema.safeParse(await request.json());
@@ -232,7 +249,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const authResult = await requireSession();
+  const authResult = await requireRole(["RESIDENT", "COLLECTION_STAFF", "BARANGAY_STAFF", "ADMIN"]);
   if ("error" in authResult) return authResult.error;
   let publicId: string | null = null;
   try {

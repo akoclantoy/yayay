@@ -86,28 +86,28 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts              Account[]
-  sessions              Session[]
-  residentProfile       ResidentProfile?
-  staffProfile          StaffProfile?
-  notifications         Notification[]
-  auditLogs             AuditLog[]              @relation("AuditActor")
-  recyclingRecords      RecyclingRecord[]       @relation("RecordedBy")
-  verifiedRecycling     RecyclingRecord[]       @relation("VerifiedBy")
-  pickupRequests        PickupRequest[]
-  assignedPickups       PickupRequest[]         @relation("AssignedStaff")
-  redemptionRequests    RedemptionRequest[]
-  rewardTransactions    RewardTransaction[]
-  userBadges            UserBadge[]
-  userAchievements      UserAchievement[]
-  aiConversations       AIConversation[]
-  passwordResetTokens   PasswordResetToken[]
+  accounts                Account[]
+  sessions                Session[]
+  residentProfile         ResidentProfile?
+  staffProfile            StaffProfile?
+  notifications           Notification[]
+  auditLogs               AuditLog[]               @relation("AuditActor")
+  recyclingRecords        RecyclingRecord[]        @relation("RecordedBy")
+  verifiedRecycling       RecyclingRecord[]        @relation("VerifiedBy")
+  pickupRequests          PickupRequest[]
+  assignedPickups         PickupRequest[]          @relation("AssignedStaff")
+  redemptionRequests      RedemptionRequest[]
+  rewardTransactions      RewardTransaction[]
+  userBadges              UserBadge[]
+  userAchievements        UserAchievement[]
+  aiConversations         AIConversation[]
+  passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
-  createdAnnouncements  Announcement[]          @relation("AnnouncementAuthor")
-  createdNews           News[]                    @relation("NewsAuthor")
-  residentConversations Conversation[]            @relation("ConversationResident")
-  staffConversations    Conversation[]            @relation("ConversationStaff")
-  sentMessages         ConversationMessage[]      @relation("MessageSender")
+  createdAnnouncements    Announcement[]           @relation("AnnouncementAuthor")
+  createdNews             News[]                   @relation("NewsAuthor")
+  residentConversations   Conversation[]           @relation("ConversationResident")
+  staffConversations      Conversation[]           @relation("ConversationStaff")
+  sentMessages            ConversationMessage[]    @relation("MessageSender")
 
   @@index([role])
   @@index([email])
@@ -200,23 +200,23 @@ model Barangay {
 }
 
 model ResidentProfile {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  barangayId      String?
-  qrCode          String   @unique @default(cuid())
-  address         String?
-  houseNumber     String?
-  environmentalScore Int   @default(0)
-  recyclingStreak    Int   @default(0)
-  totalWeightKg      Float @default(0)
-  carbonSavedKg      Float @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  barangayId         String?
+  qrCode             String   @unique @default(cuid())
+  address            String?
+  houseNumber        String?
+  environmentalScore Int      @default(0)
+  recyclingStreak    Int      @default(0)
+  totalWeightKg      Float    @default(0)
+  carbonSavedKg      Float    @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  barangay          Barangay?           @relation(fields: [barangayId], references: [id], onDelete: SetNull)
-  wallet            RewardWallet?
-  recyclingRecords  RecyclingRecord[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  barangay         Barangay?         @relation(fields: [barangayId], references: [id], onDelete: SetNull)
+  wallet           RewardWallet?
+  recyclingRecords RecyclingRecord[]
 
   @@index([barangayId])
   @@index([qrCode])
@@ -253,11 +253,11 @@ model CollectionCenter {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  barangay          Barangay?          @relation(fields: [barangayId], references: [id], onDelete: SetNull)
-  staff             StaffProfile[]
-  recyclingRecords  RecyclingRecord[]
-  schedules         CollectionSchedule[]
-  pickupRoutes      PickupRoute[]
+  barangay         Barangay?            @relation(fields: [barangayId], references: [id], onDelete: SetNull)
+  staff            StaffProfile[]
+  recyclingRecords RecyclingRecord[]
+  schedules        CollectionSchedule[]
+  pickupRoutes     PickupRoute[]
 
   @@index([barangayId])
   @@index([deletedAt])
@@ -299,11 +299,11 @@ model RecyclingRecord {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  resident      ResidentProfile @relation(fields: [residentId], references: [userId], onDelete: Cascade)
-  wasteCategory WasteCategory   @relation(fields: [wasteCategoryId], references: [id])
+  resident      ResidentProfile   @relation(fields: [residentId], references: [userId], onDelete: Cascade)
+  wasteCategory WasteCategory     @relation(fields: [wasteCategoryId], references: [id])
   center        CollectionCenter? @relation(fields: [centerId], references: [id], onDelete: SetNull)
-  recordedBy    User?           @relation("RecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
-  verifiedBy    User?           @relation("VerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+  recordedBy    User?             @relation("RecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  verifiedBy    User?             @relation("VerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
 
   @@index([residentId])
   @@index([collectionDate])
@@ -312,27 +312,27 @@ model RecyclingRecord {
 }
 
 model RewardWallet {
-  id        String   @id @default(cuid())
-  residentId String  @unique
-  balance   Int      @default(0)
-  lifetime  Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  residentId String   @unique
+  balance    Int      @default(0)
+  lifetime   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   resident     ResidentProfile     @relation(fields: [residentId], references: [userId], onDelete: Cascade)
   transactions RewardTransaction[]
 }
 
 model RewardTransaction {
-  id          String          @id @default(cuid())
-  walletId    String
-  userId      String
-  type        TransactionType
-  amount      Int
+  id           String          @id @default(cuid())
+  walletId     String
+  userId       String
+  type         TransactionType
+  amount       Int
   balanceAfter Int
-  description String?
-  referenceId String?
-  createdAt   DateTime        @default(now())
+  description  String?
+  referenceId  String?
+  createdAt    DateTime        @default(now())
 
   wallet RewardWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
   user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -363,16 +363,16 @@ model Reward {
 }
 
 model RedemptionRequest {
-  id        String           @id @default(cuid())
-  userId    String
-  rewardId  String
-  points    Int
-  status    RedemptionStatus @default(PENDING)
-  notes     String?          @db.Text
+  id          String           @id @default(cuid())
+  userId      String
+  rewardId    String
+  points      Int
+  status      RedemptionStatus @default(PENDING)
+  notes       String?          @db.Text
   fulfilledAt DateTime?
-  deletedAt DateTime?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  deletedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   reward Reward @relation(fields: [rewardId], references: [id])
@@ -394,12 +394,12 @@ model PickupRequest {
   images          Json         @default("[]")
   collectedAt     DateTime?
   deletedAt       DateTime?
-  reminderSentAt DateTime?
-  createdAt       DateTime  @default(now())
+  reminderSentAt  DateTime?
+  createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
-  user          User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  assignedStaff User? @relation("AssignedStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedStaff User?         @relation("AssignedStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
   conversation  Conversation?
 
   @@index([userId])
@@ -444,16 +444,16 @@ model ConversationMessage {
 }
 
 model PickupRoute {
-  id        String   @id @default(cuid())
-  name      String
+  id         String   @id @default(cuid())
+  name       String
   barangayId String?
-  centerId  String?
-  staffId   String?
-  routeDate DateTime
-  waypoints Json?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  centerId   String?
+  staffId    String?
+  routeDate  DateTime
+  waypoints  Json?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   barangay Barangay?         @relation(fields: [barangayId], references: [id], onDelete: SetNull)
   center   CollectionCenter? @relation(fields: [centerId], references: [id], onDelete: SetNull)
@@ -463,16 +463,16 @@ model PickupRoute {
 }
 
 model CollectionSchedule {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   title      String
   barangayId String?
   centerId   String?
   startDate  DateTime
   endDate    DateTime?
   recurrence String?
-  notes      String?  @db.Text
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  notes      String?   @db.Text
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   barangay Barangay?         @relation(fields: [barangayId], references: [id], onDelete: SetNull)
   center   CollectionCenter? @relation(fields: [centerId], references: [id], onDelete: SetNull)
@@ -536,24 +536,24 @@ model Notification {
 }
 
 model Badge {
-  id              String   @id @default(cuid())
-  name            String   @unique
-  description     String?
-  icon            String?
-  criteria        String?
-  targetWeightKg  Float?
-  points          Int      @default(0)
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  name           String   @unique
+  description    String?
+  icon           String?
+  criteria       String?
+  targetWeightKg Float?
+  points         Int      @default(0)
+  createdAt      DateTime @default(now())
 
   userBadges UserBadge[]
 }
 
 model UserBadge {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
   badgeId     String
-  bonusPoints Int      @default(0)
-  earnedAt    DateTime @default(now())
+  bonusPoints Int       @default(0)
+  earnedAt    DateTime  @default(now())
   claimedAt   DateTime?
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -574,13 +574,13 @@ model Achievement {
 }
 
 model UserAchievement {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
   achievementId String
-  progress      Int      @default(0)
-  completed     Boolean  @default(false)
+  progress      Int       @default(0)
+  completed     Boolean   @default(false)
   completedAt   DateTime?
-  updatedAt     DateTime @updatedAt
+  updatedAt     DateTime  @updatedAt
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
@@ -616,15 +616,15 @@ model AIConversation {
 }
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  actorId    String?
-  action     String
-  entity     String
-  entityId   String?
-  metadata   Json?
-  ipAddress  String?
-  userAgent  String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
 
   actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 

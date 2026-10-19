@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { TupiMapClient } from "@/components/maps/tupi-map-client";
 import type { TupiMapPoint } from "@/components/maps/tupi-map";
 import { MessageCircle, MapPinned } from "lucide-react";
 import Link from "next/link";
+import { isWithinTupi } from "@/lib/tupi";
 
 type Pickup = {
   id: string;
@@ -29,13 +30,38 @@ const STATUSES = ["PENDING", "APPROVED", "COLLECTED", "COMPLETED", "CANCELLED"];
 export default function StaffPickupsPage() {
   const [pickups, setPickups] = useState<Pickup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  const loadPickups = useCallback(async () => {
+    const response = await fetch("/api/pickup", { cache: "no-store" });
+    const data = (await response.json()) as Pickup[] | { error?: string };
+    if (!response.ok || !Array.isArray(data)) {
+      throw new Error(!Array.isArray(data) ? data.error ?? "Could not load pickups." : "Could not load pickups.");
+    }
+    setPickups(data);
+    setLoadError("");
+  }, []);
 
   useEffect(() => {
-    fetch("/api/pickup")
-      .then((r) => r.json())
-      .then((data: Pickup[]) => setPickups(data))
+    void loadPickups()
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "Could not load pickups.";
+        setLoadError(message);
+        toast.error(message);
+      })
       .finally(() => setLoading(false));
-  }, []);
+    const events = new EventSource("/api/realtime");
+    const refresh = () => {
+      void loadPickups().catch((error: unknown) => {
+        console.error("[staff-pickups] Could not refresh pickups:", error);
+      });
+    };
+    events.addEventListener("invalidate", refresh);
+    return () => {
+      events.removeEventListener("invalidate", refresh);
+      events.close();
+    };
+  }, [loadPickups]);
 
   async function updateStatus(id: string, status: string) {
     try {
@@ -59,7 +85,11 @@ export default function StaffPickupsPage() {
   }
 
   const mapPoints: TupiMapPoint[] = pickups.flatMap((pickup) => {
-    if (pickup.latitude === null || pickup.longitude === null) return [];
+    if (
+      pickup.latitude === null ||
+      pickup.longitude === null ||
+      !isWithinTupi(pickup.latitude, pickup.longitude)
+    ) return [];
     return [{
       id: pickup.id,
       name: pickup.user.name ?? pickup.user.email,
@@ -74,7 +104,7 @@ export default function StaffPickupsPage() {
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Manage Pickups</h1>
-        <p className="text-muted-foreground">Review and update pickup requests</p>
+        <p className="text-muted-foreground">Review and update pickup requests across Tupi, South Cotabato.</p>
       </div>
 
       <Card>
@@ -91,6 +121,8 @@ export default function StaffPickupsPage() {
 
       {loading ? (
         <p className="text-muted-foreground">Loading...</p>
+      ) : loadError ? (
+        <Card><CardContent className="py-12 text-center text-destructive">{loadError}</CardContent></Card>
       ) : pickups.length === 0 ? (
         <Card><CardContent className="py-12 text-center text-muted-foreground">No pickup requests</CardContent></Card>
       ) : (

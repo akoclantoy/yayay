@@ -73,7 +73,12 @@ Optional (features work with fallbacks without these):
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google / Gmail sign-in |
 | `GEMINI_API_KEY` | AI assistant & image classification |
 | `SMTP_*` | Email (password reset, verification) |
-| `CLOUDINARY_*` | Image uploads |
+| `CLOUDINARY_*` | Image uploads, including pickup messenger image attachments |
+
+Pickup maps and barangay activity are scoped to Tupi, South Cotabato. Map tiles
+are provided by OpenStreetMap and include visible attribution. Pickup-time
+reminders are delivered in-app the next time the system is active after the
+scheduled time; delivery is not guaranteed while the application is inactive.
 
 ### 3. Set up the database
 

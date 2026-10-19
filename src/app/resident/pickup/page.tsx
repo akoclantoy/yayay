@@ -87,7 +87,9 @@ export default function PickupPage() {
                 id="date"
                 type="datetime-local"
                 value={scheduledDate}
-                min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+                min={new Date(
+                  Date.now() + 60_000 - new Date().getTimezoneOffset() * 60_000
+                ).toISOString().slice(0, 16)}
                 onChange={(e) => setScheduledDate(e.target.value)}
               />
             </div>

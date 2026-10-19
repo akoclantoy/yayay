@@ -47,7 +47,7 @@ export function BarangayImpactMap({
             Recycling activity map
           </CardTitle>
           <p className="mt-1 text-sm text-emerald-100/80">
-            Select a barangay marker to inspect local participation and collections.
+            Select a barangay marker to inspect activity. Pins show approximate barangay locations.
           </p>
         </div>
         <div className="flex gap-4 text-sm text-emerald-50">
@@ -56,7 +56,11 @@ export function BarangayImpactMap({
         </div>
       </CardHeader>
       <CardContent className="grid gap-0 p-0 lg:grid-cols-[minmax(0,1fr)_290px]">
-        <TupiMapClient points={mapPoints} height={500} />
+        <TupiMapClient
+          points={mapPoints}
+          height={500}
+          onPointSelect={(id) => setSelected(id)}
+        />
         <aside className="max-h-[500px] overflow-y-auto border-t bg-muted/20 p-4 lg:border-l lg:border-t-0">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold">Barangay performance</h3>

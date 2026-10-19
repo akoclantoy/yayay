@@ -58,13 +58,11 @@ console.log("[setup-db] Applying Prisma schema...");
 try {
   await withRetry("Prisma schema push", "npx prisma db push");
   console.log("[setup-db] Prisma schema is ready.");
-} catch {
-  console.warn(
-    "[setup-db] Prisma schema push failed. The app may still start, but database schema sync could be incomplete."
+} catch (error) {
+  console.error(
+    "[setup-db] Prisma schema push failed. Verify that DIRECT_URL is reachable and DATABASE_URL is set for runtime traffic."
   );
-  console.warn(
-    "[setup-db] Check that DIRECT_URL is reachable from Render and DATABASE_URL is set for runtime traffic."
-  );
+  throw error;
 }
 
 if (process.env.SKIP_DATABASE_SEED === "true" || process.env.RENDER === "true") {

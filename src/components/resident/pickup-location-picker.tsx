@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LocateFixed, MapPin, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { TupiMapClient } from "@/components/maps/tupi-map-client";
@@ -19,21 +19,34 @@ export function PickupLocationPicker({
   const [heatPoints, setHeatPoints] = useState<TupiMapPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const loadHeat = useCallback(async (signal?: AbortSignal) => {
+    const response = await fetch("/api/pickup/heat", { signal, cache: "no-store" });
+    if (!response.ok) throw new Error("Could not load pickup activity.");
+    const points = (await response.json()) as TupiMapPoint[];
+    setHeatPoints(points);
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/pickup/heat", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Could not load pickup activity.");
-        return response.json() as Promise<TupiMapPoint[]>;
-      })
-      .then(setHeatPoints)
-      .catch((error: unknown) => {
-        if (error instanceof Error && error.name === "AbortError") return;
-        toast.error(error instanceof Error ? error.message : "Could not load pickup activity.");
-      })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
-  }, []);
+    void loadHeat(controller.signal).catch((error: unknown) => {
+      if (error instanceof Error && error.name === "AbortError") return;
+      toast.error(error instanceof Error ? error.message : "Could not load pickup activity.");
+      setLoading(false);
+    });
+    const events = new EventSource("/api/realtime");
+    const refresh = () => {
+      void loadHeat().catch((error: unknown) =>
+        console.error("[pickup-map] Could not refresh activity:", error)
+      );
+    };
+    events.addEventListener("invalidate", refresh);
+    return () => {
+      controller.abort();
+      events.removeEventListener("invalidate", refresh);
+      events.close();
+    };
+  }, [loadHeat]);
 
   function selectLocation(latitude: number, longitude: number) {
     if (!isWithinTupi(latitude, longitude)) {

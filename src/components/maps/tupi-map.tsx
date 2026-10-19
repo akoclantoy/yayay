@@ -4,13 +4,14 @@ import { useEffect } from "react";
 import {
   CircleMarker,
   MapContainer,
+  Polygon,
   Popup,
   TileLayer,
   useMap,
   useMapEvents,
 } from "react-leaflet";
 import { LatLngBounds, type LeafletMouseEvent } from "leaflet";
-import { isWithinTupi, TUPI_BOUNDS, TUPI_CENTER } from "@/lib/tupi";
+import { isWithinTupi, TUPI_BOUNDARY, TUPI_BOUNDS, TUPI_CENTER } from "@/lib/tupi";
 
 export type TupiMapPoint = {
   id: string;
@@ -72,6 +73,7 @@ export function TupiLeafletMap({
   points = [],
   selected,
   onSelect,
+  onPointSelect,
   height = 420,
   interactive = false,
   showHeat = false,
@@ -80,6 +82,7 @@ export function TupiLeafletMap({
   points?: TupiMapPoint[];
   selected?: [number, number] | null;
   onSelect?: (latitude: number, longitude: number) => void;
+  onPointSelect?: (id: string) => void;
   height?: number;
   interactive?: boolean;
   showHeat?: boolean;
@@ -112,6 +115,10 @@ export function TupiLeafletMap({
           maxZoom={19}
         />
         <MapInteractions onSelect={onSelect} selected={selected} />
+        <Polygon
+          positions={TUPI_BOUNDARY}
+          pathOptions={{ color: "#047857", weight: 3, fill: false, dashArray: "7 6" }}
+        />
         {points.map((point) => {
           const radius = pointRadius(point, maxValue);
           const color = pointColor(point);
@@ -128,6 +135,7 @@ export function TupiLeafletMap({
                 fillColor: color,
                 fillOpacity: isHeat ? 0.22 : 0.8,
               }}
+              eventHandlers={{ click: () => onPointSelect?.(point.id) }}
             >
               <Popup>
                 <div className="space-y-1">

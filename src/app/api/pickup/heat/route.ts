@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
-import { TUPI_BOUNDS } from "@/lib/tupi";
+import { isWithinTupi, TUPI_BOUNDS } from "@/lib/tupi";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +26,7 @@ export async function GET() {
   const cells = new Map<string, { latitude: number; longitude: number; count: number }>();
   for (const pickup of pickups) {
     if (pickup.latitude === null || pickup.longitude === null) continue;
+    if (!isWithinTupi(pickup.latitude, pickup.longitude)) continue;
     const row = Math.floor((pickup.latitude - south) / cellSize);
     const column = Math.floor((pickup.longitude - west) / cellSize);
     const key = `${row}:${column}`;

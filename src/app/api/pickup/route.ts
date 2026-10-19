@@ -7,7 +7,13 @@ import { z } from "zod";
 
 const createSchema = z.object({
   address: z.string().min(5),
-  scheduledDate: z.string().datetime().optional(),
+  scheduledDate: z
+    .string()
+    .datetime()
+    .optional()
+    .refine((value) => !value || new Date(value).getTime() > Date.now(), {
+      message: "Pickup time must be in the future.",
+    }),
   wasteNotes: z.string().optional(),
   latitude: z.number(),
   longitude: z.number(),
@@ -61,6 +67,7 @@ export async function POST(request: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.flatten() }, { status: 400 });
     }
+    console.error("[pickup] Failed to create request:", error);
     return NextResponse.json({ error: "Failed to create pickup" }, { status: 500 });
   }
 }
@@ -179,7 +186,8 @@ export async function PATCH(request: Request) {
     });
 
     return NextResponse.json(pickup);
-  } catch {
+  } catch (error) {
+    console.error("[pickup] Failed to update request:", error);
     return NextResponse.json({ error: "Failed to update pickup" }, { status: 500 });
   }
 }

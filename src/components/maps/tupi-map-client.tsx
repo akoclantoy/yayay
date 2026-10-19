@@ -20,6 +20,7 @@ export function TupiMapClient({
   points,
   selected,
   onSelect,
+  onPointSelect,
   height,
   interactive,
   showHeat,
@@ -28,6 +29,7 @@ export function TupiMapClient({
   points?: TupiMapPoint[];
   selected?: [number, number] | null;
   onSelect?: (latitude: number, longitude: number) => void;
+  onPointSelect?: (id: string) => void;
   height?: number;
   interactive?: boolean;
   showHeat?: boolean;
@@ -38,6 +40,7 @@ export function TupiMapClient({
       points={points}
       selected={selected}
       onSelect={onSelect}
+      onPointSelect={onPointSelect}
       height={height}
       interactive={interactive}
       showHeat={showHeat}
