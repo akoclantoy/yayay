@@ -212,9 +212,11 @@ export function ResidentMessenger({
         void scanner.stop().catch((cause: unknown) => {
           console.error("[resident-messenger] Could not stop QR scanner:", cause);
         });
-        void scanner.clear().catch((cause: unknown) => {
+        try {
+          scanner.clear();
+        } catch (cause) {
           console.error("[resident-messenger] Could not clear QR scanner:", cause);
-        });
+        }
       }
     };
   }, [scannerOpen]);
