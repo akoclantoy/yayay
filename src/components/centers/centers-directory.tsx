@@ -212,7 +212,7 @@ export function CentersDirectory({
             </div>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Badge variant={municipalHall.isActive ? "success" : "warning"}>
-                {municipalHall.isActive ? "Open for drop-offs" : "Currently inactive"}
+                {municipalHall.isActive ? "Active center" : "Currently inactive"}
               </Badge>
               <a
                 href={mapsDirectionsUrl(municipalHall.latitude, municipalHall.longitude)}
