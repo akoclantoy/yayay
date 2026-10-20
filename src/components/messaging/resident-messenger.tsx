@@ -118,7 +118,6 @@ export function ResidentMessenger({
   const [themeOpen, setThemeOpen] = useState(false);
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
-  const scannerRef = useRef<{ stop: () => Promise<void>; clear: () => Promise<void> } | null>(null);
 
   const activeFriend = useMemo(() => {
     if (details) return details.friend;
@@ -191,7 +190,6 @@ export function ResidentMessenger({
         const { Html5Qrcode } = await import("html5-qrcode");
         if (!active) return;
         scanner = new Html5Qrcode("resident-qr-reader");
-        scannerRef.current = scanner;
         await scanner.start(
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 230, height: 230 } },
@@ -217,7 +215,6 @@ export function ResidentMessenger({
           console.error("[resident-messenger] Could not clear QR scanner:", cause);
         });
       }
-      scannerRef.current = null;
     };
   }, [scannerOpen]);
 
@@ -541,7 +538,7 @@ export function ResidentMessenger({
                   <div className="flex items-center gap-1">
                     <button type="button" title="Transfer points by scanning their QR code" onClick={() => void startTransferScan()} className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Wallet className="h-5 w-5" /></button>
                     <button type="button" title="Conversation appearance" onClick={() => setThemeOpen((open) => !open)} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><Settings2 className="h-5 w-5" /></button>
-                    <button type="button" title="More options" onClick={() => { setProfile(null); void lookupQr(activeFriend.qrCode ?? ""); }} className="hidden h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted sm:flex"><MoreHorizontal className="h-5 w-5" /></button>
+                    <button type="button" title="View mutual friends" onClick={() => { const friend = data?.friends.find((item) => item.id === activeFriend.id); if (friend?.qrCode) void lookupQr(friend.qrCode); }} className="hidden h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted sm:flex"><MoreHorizontal className="h-5 w-5" /></button>
                   </div>
                 </header>
 
