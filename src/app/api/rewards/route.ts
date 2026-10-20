@@ -147,6 +147,21 @@ export async function POST(request: Request) {
             link: "/resident/wallet",
           },
         });
+        const admins = await tx.user.findMany({
+          where: { role: "ADMIN", isActive: true, deletedAt: null },
+          select: { id: true },
+        });
+        if (admins.length > 0) {
+          await tx.notification.createMany({
+            data: admins.map((admin) => ({
+              userId: admin.id,
+              title: "New redemption request",
+              message: "A resident submitted a GCash redemption request.",
+              type: "reward",
+              link: "/admin/redemptions",
+            })),
+          });
+        }
 
         return req;
       });
@@ -224,6 +239,21 @@ export async function POST(request: Request) {
           link: "/resident/rewards",
         },
       });
+      const admins = await tx.user.findMany({
+        where: { role: "ADMIN", isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      if (admins.length > 0) {
+        await tx.notification.createMany({
+          data: admins.map((admin) => ({
+            userId: admin.id,
+            title: "New redemption request",
+            message: "A resident submitted a reward redemption request.",
+            type: "reward",
+            link: "/admin/redemptions",
+          })),
+        });
+      }
 
       return req;
     });

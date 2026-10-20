@@ -93,6 +93,21 @@ export async function recordRecycling(input: {
         link: "/resident/wallet",
       },
     });
+    const admins = await tx.user.findMany({
+      where: { role: "ADMIN", isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (admins.length > 0) {
+      await tx.notification.createMany({
+        data: admins.map((admin) => ({
+          userId: admin.id,
+          title: "Recycling transaction recorded",
+          message: `A staff member recorded ${input.weightKg}kg of ${category.name} recycling.`,
+          type: "recycling",
+          link: "/admin/reports",
+        })),
+      });
+    }
 
     return record;
   });

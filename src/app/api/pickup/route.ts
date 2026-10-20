@@ -59,6 +59,25 @@ export async function POST(request: Request) {
           link: "/resident/pickup",
         },
       });
+      const portalRecipients = await tx.user.findMany({
+        where: {
+          role: { in: ["COLLECTION_STAFF", "BARANGAY_STAFF", "ADMIN"] },
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true, role: true },
+      });
+      if (portalRecipients.length > 0) {
+        await tx.notification.createMany({
+          data: portalRecipients.map((recipient) => ({
+            userId: recipient.id,
+            title: "New pickup request",
+            message: "A resident submitted a new pickup request in Tupi.",
+            type: "pickup",
+            link: recipient.role === "ADMIN" ? "/admin/pickups" : "/staff/pickups",
+          })),
+        });
+      }
       return pickup;
     });
 
@@ -182,6 +201,35 @@ export async function PATCH(request: Request) {
           link: "/resident/pickup",
         },
       });
+      if (authResult.session.user.role === "ADMIN") {
+        if (nextStaffId && nextStaffId !== authResult.session.user.id) {
+          await tx.notification.create({
+            data: {
+              userId: nextStaffId,
+              title: "Pickup assignment updated",
+              message: `A pickup request is now ${status.toLowerCase().replace("_", " ")}.`,
+              type: "pickup",
+              link: "/staff/pickups",
+            },
+          });
+        }
+      } else {
+        const admins = await tx.user.findMany({
+          where: { role: "ADMIN", isActive: true, deletedAt: null },
+          select: { id: true },
+        });
+        if (admins.length > 0) {
+          await tx.notification.createMany({
+            data: admins.map((admin) => ({
+              userId: admin.id,
+              title: "Pickup request updated",
+              message: `A staff member updated a pickup to ${status.toLowerCase().replace("_", " ")}.`,
+              type: "pickup",
+              link: "/admin/pickups",
+            })),
+          });
+        }
+      }
       return pickup;
     });
 

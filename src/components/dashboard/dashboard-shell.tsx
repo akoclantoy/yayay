@@ -30,7 +30,7 @@ import {
   X,
   ChevronLeft,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { APP_NAME, ROLE_LABELS } from "@/lib/constants";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -106,9 +106,58 @@ export function DashboardShell({
   const { data: session } = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [unreadByLink, setUnreadByLink] = useState<Record<string, number>>({});
   const nav = NAV_BY_ROLE[role] ?? RESIDENT_NAV;
   const context = ROLE_CONTEXT[role] ?? ROLE_CONTEXT.RESIDENT;
   const activeItem = nav.find((item) => pathname === item.href || (item.href !== "/resident" && item.href !== "/staff" && item.href !== "/admin" && pathname.startsWith(item.href)));
+  const activeHref = activeItem?.href;
+  const refreshUnreadActivity = useCallback(async () => {
+    const response = await fetch("/api/notifications?unreadByLink=1", {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error("Could not load unread activity.");
+    }
+    const activity: unknown = await response.json();
+    if (typeof activity !== "object" || activity === null || Array.isArray(activity)) {
+      throw new Error("Unread activity response was invalid.");
+    }
+    setUnreadByLink(activity as Record<string, number>);
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const events = new EventSource("/api/realtime");
+    const refresh = () => {
+      void refreshUnreadActivity().catch((error: unknown) => {
+        console.error("[dashboard] Could not refresh unread activity:", error);
+      });
+    };
+    events.addEventListener("open", refresh);
+    events.addEventListener("invalidate", refresh);
+    return () => {
+      events.removeEventListener("open", refresh);
+      events.removeEventListener("invalidate", refresh);
+      events.close();
+    };
+  }, [refreshUnreadActivity, session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id || !activeHref) return;
+    void fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ link: activeHref }),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("Could not clear section activity.");
+        return refreshUnreadActivity();
+      })
+      .catch((error: unknown) => {
+        console.error("[dashboard] Could not mark section activity as viewed:", error);
+      });
+  }, [activeHref, refreshUnreadActivity, session?.user?.id]);
 
   return (
     <div className="flex min-h-screen">
@@ -156,6 +205,7 @@ export function DashboardShell({
 
         <nav className="flex-1 overflow-y-auto p-3 space-y-1.5">
           {nav.map((item) => {
+            const hasUnreadActivity = (unreadByLink[item.href] ?? 0) > 0;
             const active =
               pathname === item.href ||
               (item.href !== `/${role.toLowerCase().replace("_", "")}` &&
@@ -184,8 +234,18 @@ export function DashboardShell({
                       ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
+                  aria-label={collapsed ? `${item.label}${hasUnreadActivity ? ", new activity" : ""}` : undefined}
+                  title={collapsed && hasUnreadActivity ? `${item.label} has new activity` : undefined}
                 >
-                  <item.icon className="h-4 w-4 shrink-0" />
+                  <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
+                    <item.icon className="h-4 w-4" />
+                    {hasUnreadActivity && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background shadow-[0_0_10px_rgba(239,68,68,0.45)]"
+                      />
+                    )}
+                  </span>
                   {!collapsed && <span>{item.label}</span>}
                 </Link>
               </motion.div>
@@ -240,12 +300,22 @@ export function DashboardShell({
             <>
               <Link href="/resident/messages" aria-label="Open messenger">
                 <Button variant="ghost" size="icon" className="text-muted-foreground">
-                  <MessageCircle />
+                  <span className="relative">
+                    <MessageCircle />
+                    {(unreadByLink["/resident/messages"] ?? 0) > 0 && (
+                      <span aria-hidden="true" className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
+                    )}
+                  </span>
                 </Button>
               </Link>
               <Link href="/resident/notifications" aria-label="View notifications">
                 <Button variant="ghost" size="icon" className="text-muted-foreground">
-                  <Bell />
+                  <span className="relative">
+                    <Bell />
+                    {(unreadByLink["/resident/notifications"] ?? 0) > 0 && (
+                      <span aria-hidden="true" className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
+                    )}
+                  </span>
                 </Button>
               </Link>
             </>
@@ -253,7 +323,12 @@ export function DashboardShell({
           {(role === "COLLECTION_STAFF" || role === "BARANGAY_STAFF") && (
             <Link href="/staff/messages" aria-label="Open messenger">
               <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <MessageCircle />
+                <span className="relative">
+                  <MessageCircle />
+                  {(unreadByLink["/staff/messages"] ?? 0) > 0 && (
+                    <span aria-hidden="true" className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
+                  )}
+                </span>
               </Button>
             </Link>
           )}
