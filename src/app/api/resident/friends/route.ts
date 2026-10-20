@@ -4,7 +4,10 @@ import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { canonicalFriendshipPair } from "@/lib/resident-social";
 
-const requestSchema = z.object({ qrCode: z.string().trim().min(1).max(200) });
+const requestSchema = z.object({
+  qrCode: z.string().trim().min(1).max(200),
+  connection: z.enum(["REQUEST", "QR_SCAN"]).default("REQUEST"),
+});
 const updateSchema = z.object({
   requestId: z.string().min(1),
   action: z.enum(["ACCEPT", "DECLINE"]),
@@ -16,8 +19,132 @@ export async function GET(request: Request) {
   const userId = authResult.session.user.id;
   const { searchParams } = new URL(request.url);
   const qrCode = searchParams.get("qr")?.trim();
+  const directory = searchParams.get("directory") === "1";
 
   try {
+    if (directory) {
+      const query = searchParams.get("search")?.trim() ?? "";
+      const page = Math.max(0, Number.parseInt(searchParams.get("page") ?? "0", 10) || 0);
+      const pageSize = 30;
+      const where = {
+        id: { not: userId },
+        isActive: true,
+        role: "RESIDENT" as const,
+        residentProfile: { isNot: null },
+        ...(query ? { name: { contains: query, mode: "insensitive" as const } } : {}),
+      };
+      const [residents, total] = await Promise.all([
+        db.user.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            residentProfile: { select: { qrCode: true } },
+          },
+          orderBy: [{ name: "asc" }, { id: "asc" }],
+          skip: page * pageSize,
+          take: pageSize,
+        }),
+        db.user.count({ where }),
+      ]);
+      const residentIds = residents.map((resident) => resident.id);
+      const [friendships, requests, conversations, myFriendships] = await Promise.all([
+        residentIds.length
+          ? db.friendship.findMany({
+              where: {
+                OR: [
+                  { userLowId: userId, userHighId: { in: residentIds } },
+                  { userHighId: userId, userLowId: { in: residentIds } },
+                ],
+              },
+              select: { userLowId: true, userHighId: true },
+            })
+          : Promise.resolve([]),
+        residentIds.length
+          ? db.friendRequest.findMany({
+              where: {
+                status: "PENDING",
+                OR: [
+                  { senderId: userId, recipientId: { in: residentIds } },
+                  { recipientId: userId, senderId: { in: residentIds } },
+                ],
+              },
+              select: { id: true, senderId: true, recipientId: true },
+            })
+          : Promise.resolve([]),
+        residentIds.length
+          ? db.directConversation.findMany({
+              where: {
+                OR: [
+                  { participantLowId: userId, participantHighId: { in: residentIds } },
+                  { participantHighId: userId, participantLowId: { in: residentIds } },
+                ],
+              },
+              select: { id: true, participantLowId: true, participantHighId: true },
+            })
+          : Promise.resolve([]),
+        db.friendship.findMany({
+          where: { OR: [{ userLowId: userId }, { userHighId: userId }] },
+          select: { userLowId: true, userHighId: true },
+        }),
+      ]);
+      const friendIds = new Set(friendships.map((friendship) =>
+        friendship.userLowId === userId ? friendship.userHighId : friendship.userLowId,
+      ));
+      const friendRequestByPeer = new Map(requests.map((friendRequest) => [
+        friendRequest.senderId === userId ? friendRequest.recipientId : friendRequest.senderId,
+        friendRequest,
+      ]));
+      const conversationByPeer = new Map(conversations.map((conversation) => [
+        conversation.participantLowId === userId
+          ? conversation.participantHighId
+          : conversation.participantLowId,
+        conversation.id,
+      ]));
+      const myFriendIds = myFriendships.map((friendship) =>
+        friendship.userLowId === userId ? friendship.userHighId : friendship.userLowId,
+      );
+      const otherFriendships = myFriendIds.length && residentIds.length
+        ? await db.friendship.findMany({
+            where: {
+              OR: [
+                { userLowId: { in: myFriendIds }, userHighId: { in: residentIds } },
+                { userHighId: { in: myFriendIds }, userLowId: { in: residentIds } },
+              ],
+            },
+            select: { userLowId: true, userHighId: true },
+          })
+        : [];
+      const mutualCounts = new Map<string, number>();
+      for (const friendship of otherFriendships) {
+        const residentId = residentIds.includes(friendship.userLowId)
+          ? friendship.userLowId
+          : friendship.userHighId;
+        mutualCounts.set(residentId, (mutualCounts.get(residentId) ?? 0) + 1);
+      }
+
+      return NextResponse.json({
+        residents: residents.map((resident) => {
+          const friendRequest = friendRequestByPeer.get(resident.id);
+          return {
+            id: resident.id,
+            name: resident.name,
+            image: resident.image,
+            qrCode: resident.residentProfile?.qrCode,
+            isFriend: friendIds.has(resident.id),
+            outgoingRequest: friendRequest?.senderId === userId ? friendRequest.id : null,
+            incomingRequest: friendRequest?.recipientId === userId ? friendRequest.id : null,
+            conversationId: conversationByPeer.get(resident.id) ?? null,
+            mutualCount: mutualCounts.get(resident.id) ?? 0,
+          };
+        }),
+        page,
+        total,
+        hasMore: (page + 1) * pageSize < total,
+      });
+    }
+
     if (qrCode) {
       const profile = await db.residentProfile.findUnique({
         where: { qrCode },
@@ -45,8 +172,7 @@ export async function GET(request: Request) {
           where: { senderId_recipientId: { senderId: profile.user.id, recipientId: userId } },
         }),
       ]);
-      const mutualFriends = friendship
-        ? await db.friendship.findMany({
+      const mutualFriends = await db.friendship.findMany({
             where: {
               OR: [
                 { userLowId: userId },
@@ -76,8 +202,7 @@ export async function GET(request: Request) {
               select: { id: true, name: true, image: true },
             });
             return users;
-          })
-        : [];
+          });
 
       return NextResponse.json({
         profile: {
@@ -159,7 +284,7 @@ export async function POST(request: Request) {
   const userId = authResult.session.user.id;
 
   try {
-    const { qrCode } = requestSchema.parse(await request.json());
+    const { qrCode, connection } = requestSchema.parse(await request.json());
     const target = await db.residentProfile.findUnique({
       where: { qrCode },
       select: { userId: true, user: { select: { name: true, isActive: true, role: true } } },
@@ -173,7 +298,47 @@ export async function POST(request: Request) {
 
     const pair = canonicalFriendshipPair(userId, target.userId);
     const friendship = await db.friendship.findUnique({ where: { userLowId_userHighId: pair } });
-    if (friendship) return NextResponse.json({ error: "You are already friends" }, { status: 409 });
+    if (friendship) {
+      return NextResponse.json({
+        isFriend: true,
+        connectedNow: false,
+        friend: { id: target.userId, name: target.user.name },
+      });
+    }
+
+    if (connection === "QR_SCAN") {
+      await db.$transaction(async (tx) => {
+        await tx.friendship.upsert({
+          where: { userLowId_userHighId: pair },
+          create: pair,
+          update: {},
+        });
+        await tx.friendRequest.updateMany({
+          where: {
+            status: "PENDING",
+            OR: [
+              { senderId: userId, recipientId: target.userId },
+              { senderId: target.userId, recipientId: userId },
+            ],
+          },
+          data: { status: "ACCEPTED" },
+        });
+        await tx.notification.create({
+          data: {
+            userId: target.userId,
+            title: "New EcoRewards friend",
+            message: `${authResult.session.user.name ?? "A resident"} connected with you by QR code.`,
+            type: "friend_request",
+            link: "/resident/messages",
+          },
+        });
+      });
+      return NextResponse.json({
+        isFriend: true,
+        connectedNow: true,
+        friend: { id: target.userId, name: target.user.name },
+      }, { status: 201 });
+    }
 
     const incoming = await db.friendRequest.findUnique({
       where: { senderId_recipientId: { senderId: target.userId, recipientId: userId } },

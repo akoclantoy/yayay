@@ -28,6 +28,14 @@ import { cn } from "@/lib/utils";
 
 type Resident = { id: string; name: string | null; image: string | null; qrCode?: string };
 type Friend = Resident & { createdAt?: string };
+type DirectoryResident = Resident & {
+  qrCode: string;
+  isFriend: boolean;
+  outgoingRequest: string | null;
+  incomingRequest: string | null;
+  conversationId: string | null;
+  mutualCount: number;
+};
 type FriendRequest = { id: string; resident: Resident; createdAt: string };
 type Message = { id: string; senderId: string; content: string; createdAt: string };
 type Conversation = {
@@ -50,7 +58,7 @@ type MessengerData = {
   incomingRequests: FriendRequest[];
   outgoingRequests: FriendRequest[];
 };
-type Tab = "inbox" | "friends" | "requests" | "profile";
+type Tab = "inbox" | "friends" | "requests" | "directory" | "profile";
 
 const THEMES: Record<string, { label: string; background: string; accent: string }> = {
   forest: { label: "Forest", background: "linear-gradient(145deg, #eaf4e9, #f9fcf7)", accent: "#28754e" },
@@ -99,6 +107,10 @@ export function ResidentMessenger({
 }) {
   const [tab, setTab] = useState<Tab>("inbox");
   const [data, setData] = useState<MessengerData | null>(null);
+  const [directoryResidents, setDirectoryResidents] = useState<DirectoryResident[]>([]);
+  const [directoryPage, setDirectoryPage] = useState(0);
+  const [directoryHasMore, setDirectoryHasMore] = useState(false);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeFriendId, setActiveFriendId] = useState<string | null>(null);
@@ -178,6 +190,36 @@ export function ResidentMessenger({
   }, [activeConversationId]);
 
   useEffect(() => {
+    if (tab !== "directory") return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setDirectoryLoading(true);
+      const params = new URLSearchParams({ directory: "1", search: search.trim(), page: "0" });
+      void requestJson<{
+        residents: DirectoryResident[];
+        page: number;
+        hasMore: boolean;
+      }>(`/api/resident/friends?${params}`)
+        .then((result) => {
+          if (!active) return;
+          setDirectoryResidents(result.residents);
+          setDirectoryPage(result.page);
+          setDirectoryHasMore(result.hasMore);
+        })
+        .catch((cause: unknown) => {
+          if (active) setError(getErrorMessage(cause));
+        })
+        .finally(() => {
+          if (active) setDirectoryLoading(false);
+        });
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [search, tab]);
+
+  useEffect(() => {
     if (!activeConversationId) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
@@ -219,7 +261,11 @@ export function ResidentMessenger({
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 230, height: 230 } },
           (decodedText: string) => {
-            void lookupQr(decodedText);
+            if (transferMode) {
+              void lookupQr(decodedText);
+            } else {
+              void connectByQr(decodedText);
+            }
             setScannerOpen(false);
           },
           () => undefined,
@@ -243,7 +289,7 @@ export function ResidentMessenger({
         });
       }
     };
-  }, [scannerOpen]);
+  }, [scannerOpen, transferMode]);
 
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -268,6 +314,36 @@ export function ResidentMessenger({
     }
   }
 
+  async function connectByQr(qrCode: string) {
+    setWorking(true);
+    setError(null);
+    try {
+      const result = await requestJson<{ isFriend: boolean; connectedNow: boolean; friend: Resident }>(
+        "/api/resident/friends",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ qrCode: qrCode.trim(), connection: "QR_SCAN" }),
+        },
+      );
+      await refresh();
+      setProfile(null);
+      setTab("inbox");
+      setActiveFriendId(result.friend.id);
+      setActiveConversationId(
+        conversations.find((conversation) => conversation.friend.id === result.friend.id)?.id ?? null,
+      );
+      setDetails(null);
+      setNotice(result.connectedNow
+        ? `You and ${displayName(result.friend)} are now friends.`
+        : `You are already friends with ${displayName(result.friend)}.`);
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function updateRequest(requestId: string, action: "ACCEPT" | "DECLINE") {
     setWorking(true);
     setError(null);
@@ -286,8 +362,8 @@ export function ResidentMessenger({
     }
   }
 
-  async function sendFriendRequest() {
-    if (!profile?.qrCode) {
+  async function sendFriendRequest(qrCode = profile?.qrCode, residentId?: string) {
+    if (!qrCode) {
       setError("This resident's QR code could not be loaded. Scan their QR code again.");
       return;
     }
@@ -297,9 +373,18 @@ export function ResidentMessenger({
       const response = await requestJson<{ requestId: string }>("/api/resident/friends", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qrCode: profile.qrCode }),
+        body: JSON.stringify({ qrCode }),
       });
-      setProfile({ ...profile, outgoingRequest: response.requestId });
+      setProfile((current) => current?.id === residentId || !residentId
+        ? current ? { ...current, outgoingRequest: response.requestId } : current
+        : current);
+      if (residentId) {
+        setDirectoryResidents((current) => current.map((resident) =>
+          resident.id === residentId
+            ? { ...resident, outgoingRequest: response.requestId }
+            : resident,
+        ));
+      }
       await refresh();
       setNotice("Friend request sent.");
     } catch (cause) {
@@ -309,7 +394,7 @@ export function ResidentMessenger({
     }
   }
 
-  async function cancelRequest(requestId: string) {
+  async function cancelRequest(requestId: string, residentId?: string) {
     setWorking(true);
     setError(null);
     try {
@@ -320,6 +405,13 @@ export function ResidentMessenger({
       });
       await refresh();
       setProfile((current) => current ? { ...current, outgoingRequest: null } : current);
+      if (residentId) {
+        setDirectoryResidents((current) => current.map((resident) =>
+          resident.id === residentId
+            ? { ...resident, outgoingRequest: null }
+            : resident,
+        ));
+      }
       setNotice("Friend request cancelled.");
     } catch (cause) {
       setError(getErrorMessage(cause));
@@ -425,6 +517,42 @@ export function ResidentMessenger({
     setTab("inbox");
   }
 
+  async function loadMoreResidents() {
+    if (directoryLoading || !directoryHasMore) return;
+    setDirectoryLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        directory: "1",
+        search: search.trim(),
+        page: String(directoryPage + 1),
+      });
+      const result = await requestJson<{
+        residents: DirectoryResident[];
+        page: number;
+        hasMore: boolean;
+      }>(`/api/resident/friends?${params}`);
+      setDirectoryResidents((current) => [...current, ...result.residents]);
+      setDirectoryPage(result.page);
+      setDirectoryHasMore(result.hasMore);
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setDirectoryLoading(false);
+    }
+  }
+
+  function openDirectoryFriend(friend: DirectoryResident) {
+    setTab("inbox");
+    setActiveFriendId(friend.id);
+    setActiveConversationId(
+      friend.conversationId ??
+        conversations.find((conversation) => conversation.friend.id === friend.id)?.id ??
+        null,
+    );
+    setDetails(null);
+  }
+
   async function startTransferScan() {
     setProfile(null);
     setTransferMode(true);
@@ -437,8 +565,8 @@ export function ResidentMessenger({
   const currentTheme = THEMES[currentDetails?.theme ?? "forest"] ?? THEMES.forest;
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-3 py-3 text-[var(--foreground)] sm:px-5 sm:py-5">
-      <section className="mx-auto flex min-h-[calc(100svh-1.5rem)] max-w-[1600px] flex-col overflow-hidden rounded-[28px] border border-border/80 bg-white/85 shadow-[0_20px_80px_rgba(24,50,42,0.12)] backdrop-blur-xl sm:min-h-[calc(100svh-2.5rem)]">
+    <main className={cn("min-h-screen bg-[var(--background)] text-[var(--foreground)]", activeFriend ? "fixed inset-0 z-[60] h-[100dvh] overflow-hidden p-0" : "px-3 py-3 sm:px-5 sm:py-5")}>
+      <section className={cn("mx-auto flex flex-col overflow-hidden bg-white/85 backdrop-blur-xl", activeFriend ? "h-full min-h-0 w-full max-w-none rounded-none border-0 shadow-none" : "min-h-[calc(100svh-1.5rem)] max-w-[1600px] rounded-[28px] border border-border/80 shadow-[0_20px_80px_rgba(24,50,42,0.12)] sm:min-h-[calc(100svh-2.5rem)]")}>
         <header className="flex h-[76px] shrink-0 items-center justify-between border-b border-border/70 px-4 sm:px-7">
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/resident" aria-label="Return to resident dashboard" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-white text-muted-foreground transition hover:bg-muted hover:text-primary">
@@ -475,21 +603,22 @@ export function ResidentMessenger({
               </div>
               <label className="flex h-11 items-center gap-2.5 rounded-xl border border-border/70 bg-background/80 px-3 text-muted-foreground focus-within:border-primary/40">
                 <Search className="h-4 w-4 shrink-0" />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/70" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={tab === "directory" ? "Find a resident" : tab === "friends" ? "Search friends" : "Search conversations"} className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/70" />
                 <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
               </label>
             </div>
 
-            <nav className="grid grid-cols-4 gap-1 px-4 pb-3" aria-label="Messenger sections">
+            <nav className="grid grid-cols-5 gap-1 px-3 pb-3 sm:px-4" aria-label="Messenger sections">
               {([
                 ["inbox", "Inbox", MessageCircle],
                 ["friends", "Friends", Users],
                 ["requests", "Requests", UserPlus],
+                ["directory", "Find Friend", Search],
                 ["profile", "My QR", QrCode],
               ] as const).map(([key, label, Icon]) => (
-                <button key={key} type="button" onClick={() => { setTab(key); setActiveFriendId(null); setActiveConversationId(null); setDetails(null); setProfile(null); }} className={cn("flex flex-col items-center justify-center gap-1 rounded-xl py-2 text-[10px] font-semibold transition", tab === key ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
+                <button key={key} type="button" onClick={() => { setTab(key); setActiveFriendId(null); setActiveConversationId(null); setDetails(null); setProfile(null); }} className={cn("flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[9px] font-semibold transition sm:text-[10px]", tab === key ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
                   <Icon className="h-4 w-4" />
-                  {label}
+                  <span className="max-w-full truncate">{label}</span>
                   {key === "requests" && (data?.incomingRequests.length ?? 0) > 0 && <span className="absolute ml-7 -mt-7 h-2 w-2 rounded-full bg-secondary" />}
                 </button>
               ))}
@@ -544,6 +673,44 @@ export function ResidentMessenger({
                   {data?.outgoingRequests.map((item) => <div key={item.id} className="mb-2 flex items-center gap-3 rounded-2xl px-3 py-2"><ProfileAvatar resident={item.resident} size="h-9 w-9" /><p className="min-w-0 flex-1 truncate text-sm">{displayName(item.resident)}</p><button type="button" disabled={working} onClick={() => void cancelRequest(item.id)} className="text-[10px] font-semibold text-muted-foreground hover:text-danger">Cancel</button></div>)}
                   {!data?.outgoingRequests.length && <p className="px-2 text-xs text-muted-foreground">No sent requests.</p>}
                 </div>
+              ) : tab === "directory" ? (
+                <div className="space-y-2">
+                  <div className="rounded-2xl bg-gradient-to-br from-primary/10 via-accent/10 to-secondary/15 p-4">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-primary shadow-sm"><Users className="h-5 w-5" /></span>
+                      <div><p className="text-sm font-bold">Your EcoRewards community</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Find residents, send a request, or open a chat with a friend.</p></div>
+                    </div>
+                  </div>
+                  {directoryLoading && !directoryResidents.length && <div className="space-y-2 pt-1" aria-label="Loading residents">{[1, 2, 3].map((item) => <div key={item} className="h-24 animate-pulse rounded-2xl bg-muted/70" />)}</div>}
+                  {directoryResidents.map((resident) => (
+                    <article key={resident.id} className="rounded-2xl border border-border/60 bg-white p-3 transition hover:border-primary/20 hover:shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <ProfileAvatar resident={resident} size="h-11 w-11" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{displayName(resident)}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            {resident.isFriend ? "EcoRewards friend" : resident.incomingRequest ? "Invited you to connect" : resident.outgoingRequest ? "Request pending" : "EcoRewards resident"}
+                            {resident.mutualCount > 0 && ` · ${resident.mutualCount} mutual`}
+                          </p>
+                        </div>
+                        {resident.isFriend && <span className="rounded-full bg-primary/10 px-2 py-1 text-[9px] font-semibold text-primary">FRIEND</span>}
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        {resident.isFriend ? (
+                          <Button size="sm" className="h-9 flex-1" onClick={() => openDirectoryFriend(resident)}><MessageCircle className="h-4 w-4" />Message</Button>
+                        ) : resident.incomingRequest ? (
+                          <Button size="sm" className="h-9 flex-1" disabled={working} onClick={() => void updateRequest(resident.incomingRequest!, "ACCEPT")}><Check className="h-4 w-4" />Accept request</Button>
+                        ) : resident.outgoingRequest ? (
+                          <Button size="sm" variant="secondary" className="h-9 flex-1" disabled={working} onClick={() => void cancelRequest(resident.outgoingRequest!, resident.id)}><X className="h-4 w-4" />Cancel request</Button>
+                        ) : (
+                          <Button size="sm" className="h-9 flex-1" disabled={working} onClick={() => void sendFriendRequest(resident.qrCode, resident.id)}><UserPlus className="h-4 w-4" />Add friend</Button>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                  {!directoryLoading && !directoryResidents.length && <EmptyList icon={<Search />} title="No residents found" text={search ? "Try another name or clear your search." : "Resident accounts will appear here once they are registered."} />}
+                  {directoryHasMore && <Button variant="outline" className="w-full" disabled={directoryLoading} onClick={() => void loadMoreResidents()}>{directoryLoading ? "Loading..." : "Load more residents"}</Button>}
+                </div>
               ) : (
                 <div className="rounded-2xl border border-border/70 bg-white p-4 text-center">
                   {data?.ownProfile?.qrCode ? <div className="mx-auto mb-4 w-fit rounded-2xl bg-white p-3 shadow-sm"><QRCode value={data.ownProfile.qrCode} size={168} /></div> : <div className="mx-auto mb-4 flex h-44 w-44 items-center justify-center rounded-2xl bg-muted text-muted-foreground"><QrCode className="h-10 w-10" /></div>}
@@ -560,7 +727,7 @@ export function ResidentMessenger({
               <>
                 <header className="flex min-h-[78px] items-center justify-between border-b border-border/70 px-4 sm:px-7">
                   <div className="flex min-w-0 items-center gap-3">
-                    <button type="button" aria-label="Back to conversations" onClick={() => { setActiveFriendId(null); setActiveConversationId(null); setDetails(null); }} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted lg:hidden"><ArrowLeft className="h-4 w-4" /></button>
+                    <button type="button" aria-label="Back to conversations" onClick={() => { setActiveFriendId(null); setActiveConversationId(null); setDetails(null); }} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>
                     <ProfileAvatar resident={activeFriend} size="h-11 w-11" />
                     <div className="min-w-0"><p className="truncate text-sm font-bold">{displayName(activeFriend)}</p><p className="mt-0.5 text-xs text-primary">EcoRewards friend</p></div>
                   </div>
@@ -604,7 +771,7 @@ export function ResidentMessenger({
 
       {(error || notice) && <div role={error ? "alert" : "status"} className={cn("fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 text-sm shadow-xl", error ? "bg-danger text-white" : "bg-primary text-white")}><span>{error ?? notice}</span><button type="button" aria-label="Dismiss notification" onClick={() => { setError(null); setNotice(null); }}><X className="h-4 w-4" /></button></div>}
 
-      {scannerOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="qr-dialog-title"><div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:p-7"><div className="flex items-start justify-between"><div><h2 id="qr-dialog-title" className="text-lg font-bold">{transferMode ? "Transfer points" : "Scan a resident QR code"}</h2><p className="mt-1 text-sm text-muted-foreground">{transferMode ? "Scan your friend's QR code to choose a recipient." : "QR scanning is the only way to discover residents."}</p></div><button type="button" aria-label="Close scanner" onClick={() => setScannerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button></div><div id="resident-qr-reader" className="mt-5 min-h-60 overflow-hidden rounded-2xl bg-slate-950" />{scannerError && <p role="alert" className="mt-3 rounded-xl bg-danger/10 p-3 text-sm text-danger">{scannerError}</p>}<p className="mt-3 text-center text-xs text-muted-foreground">Allow camera access and hold the QR code inside the frame.</p></div></div>}
+      {scannerOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="qr-dialog-title"><div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:p-7"><div className="flex items-start justify-between"><div><h2 id="qr-dialog-title" className="text-lg font-bold">{transferMode ? "Transfer points" : "Scan to connect"}</h2><p className="mt-1 text-sm text-muted-foreground">{transferMode ? "Scan your friend's QR code to choose a recipient." : "Scanning a resident's QR code connects you as friends right away."}</p></div><button type="button" aria-label="Close scanner" onClick={() => setScannerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button></div><div id="resident-qr-reader" className="mt-5 min-h-60 overflow-hidden rounded-2xl bg-slate-950" />{scannerError && <p role="alert" className="mt-3 rounded-xl bg-danger/10 p-3 text-sm text-danger">{scannerError}</p>}<p className="mt-3 text-center text-xs text-muted-foreground">Allow camera access and hold the QR code inside the frame.</p></div></div>}
 
       {profile && <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-labelledby="resident-profile-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className="flex justify-end"><button type="button" aria-label="Close profile" onClick={() => { setProfile(null); setTransferMode(false); }} className="text-muted-foreground"><X className="h-5 w-5" /></button></div><div className="flex flex-col items-center text-center"><ProfileAvatar resident={profile} size="h-20 w-20" /><h2 id="resident-profile-title" className="mt-3 text-lg font-bold">{displayName(profile)}</h2><p className="text-xs text-muted-foreground">{profile.isFriend ? "Your EcoRewards friend" : "Resident profile"}</p></div>{profile.mutualFriends.length > 0 && <div className="mt-5 rounded-2xl bg-muted/50 p-3"><p className="mb-2 text-xs font-semibold text-muted-foreground">Mutual friends · {profile.mutualFriends.length}</p><div className="flex flex-wrap gap-2">{profile.mutualFriends.map((friend) => <span key={friend.id} title={displayName(friend)}><ProfileAvatar resident={friend} size="h-8 w-8" /></span>)}</div></div>}{transferMode && profile.isFriend ? <form onSubmit={(event) => void submitTransfer(event)} className="mt-5 space-y-3"><div className="rounded-xl bg-primary/5 p-3 text-sm"><span className="text-muted-foreground">Your balance</span><strong className="float-right text-primary">{transferBalance.toLocaleString("en-US")} pts</strong></div><label className="block text-left text-xs font-medium">Points to send<input type="number" min="1" max="10000" step="1" required value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-primary/50" placeholder="Maximum 10,000" /></label><p className="text-xs text-muted-foreground">No fee. Up to 10,000 points per transfer. The transfer cannot be undone.</p><Button type="submit" className="w-full" disabled={working || !transferAmount || Number(transferAmount) > transferBalance}><Wallet className="h-4 w-4" />{working ? "Sending..." : `Confirm and send${transferAmount ? ` ${Number(transferAmount).toLocaleString("en-US")} pts` : ""}`}</Button></form> : <div className="mt-5 space-y-2">{profile.incomingRequest ? <Button className="w-full" disabled={working} onClick={() => void updateRequest(profile.incomingRequest!, "ACCEPT")}><Check className="h-4 w-4" />Accept friend request</Button> : profile.isFriend ? <><Button className="w-full" onClick={() => { const friend = data?.friends.find((item) => item.id === profile.id); if (friend) openFriend(friend); setProfile(null); }}><MessageCircle className="h-4 w-4" />Message friend</Button><Button variant="outline" className="w-full" onClick={() => { setTransferMode(true); void loadTransferBalance(); }}><Wallet className="h-4 w-4" />Transfer points</Button></> : profile.outgoingRequest ? <Button variant="secondary" className="w-full" disabled={working} onClick={() => void cancelRequest(profile.outgoingRequest!)}><X className="h-4 w-4" />Cancel friend request</Button> : <Button className="w-full" disabled={working} onClick={() => void sendFriendRequest()}><UserPlus className="h-4 w-4" />Send friend request</Button>}</div>}</div></div>}
 
