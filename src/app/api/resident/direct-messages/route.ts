@@ -54,8 +54,6 @@ export async function GET(request: Request) {
           participantHigh: {
             select: { id: true, name: true, image: true, isActive: true },
           },
-          lastReadAtLow: true,
-          lastReadAtHigh: true,
           messages: {
             where: { deletedAt: null },
             orderBy: { createdAt: "asc" },
@@ -217,11 +215,16 @@ export async function PATCH(request: Request) {
     if (!conversation && !requestedFriendId) {
       return NextResponse.json({ error: "Resident is required" }, { status: 400 });
     }
-    const friendId = conversation
-      ? conversation.participantLowId === userId
+    let friendId: string;
+    if (conversation) {
+      friendId = conversation.participantLowId === userId
         ? conversation.participantHighId
-        : conversation.participantLowId
-      : requestedFriendId;
+        : conversation.participantLowId;
+    } else if (requestedFriendId) {
+      friendId = requestedFriendId;
+    } else {
+      return NextResponse.json({ error: "Resident is required" }, { status: 400 });
+    }
     if (friendId === userId) return NextResponse.json({ error: "Invalid resident" }, { status: 400 });
     const target = await db.user.findFirst({
       where: { id: friendId, role: "RESIDENT", isActive: true },

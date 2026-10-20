@@ -135,6 +135,7 @@ pooler. The database role must be able to create a function and triggers in the
 **Residents**
 - QR card for identification at collection centers
 - QR-only friend discovery, friend requests, direct messages, and mutual-friend profiles
+- Full-screen inbox with live updates, unread indicators, and per-conversation block, unfriend, and delete controls
 - Shared conversation themes and friend-only QR points transfers (up to 10,000 points per transfer)
 - Reward wallet & transaction history
 - Redeem points for vouchers and gifts
