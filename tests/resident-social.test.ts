@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   canonicalDirectConversationPair,
   canonicalFriendshipPair,
+  hasUnreadMessage,
 } from "../src/lib/resident-social";
 
 describe("resident social pair keys", () => {
@@ -26,5 +27,27 @@ describe("resident social pair keys", () => {
       participantLowId: "resident-a",
       participantHighId: "resident-b",
     });
+  });
+
+  it("marks an incoming message unread until the resident reads it", () => {
+    const messageCreatedAt = new Date("2026-10-21T00:00:00.000Z");
+    assert.equal(hasUnreadMessage({
+      senderId: "friend",
+      residentId: "resident",
+      messageCreatedAt,
+      readAt: null,
+    }), true);
+    assert.equal(hasUnreadMessage({
+      senderId: "friend",
+      residentId: "resident",
+      messageCreatedAt,
+      readAt: new Date("2026-10-21T00:00:01.000Z"),
+    }), false);
+    assert.equal(hasUnreadMessage({
+      senderId: "resident",
+      residentId: "resident",
+      messageCreatedAt,
+      readAt: null,
+    }), false);
   });
 });

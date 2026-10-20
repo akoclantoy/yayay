@@ -26,8 +26,17 @@ export async function GET(request: Request) {
       const query = searchParams.get("search")?.trim() ?? "";
       const page = Math.max(0, Number.parseInt(searchParams.get("page") ?? "0", 10) || 0);
       const pageSize = 30;
+      const blocks = await db.residentBlock.findMany({
+        where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+        select: { blockerId: true, blockedId: true },
+      });
+      const blockedIds = blocks.map((block) =>
+        block.blockerId === userId ? block.blockedId : block.blockerId,
+      );
       const where = {
-        id: { not: userId },
+        id: blockedIds.length
+          ? { notIn: [userId, ...blockedIds] }
+          : { not: userId },
         isActive: true,
         role: "RESIDENT" as const,
         residentProfile: { isNot: null },
@@ -105,6 +114,8 @@ export async function GET(request: Request) {
       const myFriendIds = myFriendships.map((friendship) =>
         friendship.userLowId === userId ? friendship.userHighId : friendship.userLowId,
       );
+      const myFriendIdSet = new Set(myFriendIds);
+      const residentIdSet = new Set(residentIds);
       const otherFriendships = myFriendIds.length && residentIds.length
         ? await db.friendship.findMany({
             where: {
@@ -118,10 +129,24 @@ export async function GET(request: Request) {
         : [];
       const mutualCounts = new Map<string, number>();
       for (const friendship of otherFriendships) {
-        const residentId = residentIds.includes(friendship.userLowId)
-          ? friendship.userLowId
-          : friendship.userHighId;
-        mutualCounts.set(residentId, (mutualCounts.get(residentId) ?? 0) + 1);
+        if (
+          residentIdSet.has(friendship.userLowId) &&
+          myFriendIdSet.has(friendship.userHighId)
+        ) {
+          mutualCounts.set(
+            friendship.userLowId,
+            (mutualCounts.get(friendship.userLowId) ?? 0) + 1,
+          );
+        }
+        if (
+          residentIdSet.has(friendship.userHighId) &&
+          myFriendIdSet.has(friendship.userLowId)
+        ) {
+          mutualCounts.set(
+            friendship.userHighId,
+            (mutualCounts.get(friendship.userHighId) ?? 0) + 1,
+          );
+        }
       }
 
       return NextResponse.json({
@@ -161,6 +186,16 @@ export async function GET(request: Request) {
       if (profile.user.id === userId) {
         return NextResponse.json({ error: "This is your own QR code" }, { status: 400 });
       }
+      const block = await db.residentBlock.findFirst({
+        where: {
+          OR: [
+            { blockerId: userId, blockedId: profile.user.id },
+            { blockerId: profile.user.id, blockedId: userId },
+          ],
+        },
+        select: { id: true },
+      });
+      if (block) return NextResponse.json({ error: "Resident not found" }, { status: 404 });
 
       const pair = canonicalFriendshipPair(userId, profile.user.id);
       const [friendship, outgoingRequest, incomingRequest] = await Promise.all([
@@ -218,7 +253,7 @@ export async function GET(request: Request) {
       });
     }
 
-    const [ownProfile, friendships, incomingRequests, outgoingRequests] = await Promise.all([
+    const [ownProfile, friendships, incomingRequests, outgoingRequests, blocks] = await Promise.all([
       db.residentProfile.findUnique({
         where: { userId },
         select: { qrCode: true, user: { select: { name: true, image: true } } },
@@ -249,14 +284,21 @@ export async function GET(request: Request) {
         },
         orderBy: { createdAt: "desc" },
       }),
+      db.residentBlock.findMany({
+        where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+        select: { blockerId: true, blockedId: true },
+      }),
     ]);
+    const blockedIds = new Set(blocks.map((block) =>
+      block.blockerId === userId ? block.blockedId : block.blockerId,
+    ));
 
     return NextResponse.json({
       ownProfile,
       friends: friendships
         .map(({ userLow, userHigh, createdAt }) => {
           const friend = userLow.id === userId ? userHigh : userLow;
-          return friend.isActive
+          return friend.isActive && !blockedIds.has(friend.id)
             ? { id: friend.id, name: friend.name, image: friend.image, qrCode: friend.residentProfile?.qrCode, createdAt }
             : null;
         })
@@ -295,6 +337,16 @@ export async function POST(request: Request) {
     if (target.userId === userId) {
       return NextResponse.json({ error: "You cannot add yourself" }, { status: 400 });
     }
+    const block = await db.residentBlock.findFirst({
+      where: {
+        OR: [
+          { blockerId: userId, blockedId: target.userId },
+          { blockerId: target.userId, blockedId: userId },
+        ],
+      },
+      select: { id: true },
+    });
+    if (block) return NextResponse.json({ error: "Resident not found" }, { status: 404 });
 
     const pair = canonicalFriendshipPair(userId, target.userId);
     const friendship = await db.friendship.findUnique({ where: { userLowId_userHighId: pair } });

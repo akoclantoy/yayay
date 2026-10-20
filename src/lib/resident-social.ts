@@ -11,3 +11,17 @@ export function canonicalDirectConversationPair(firstId: string, secondId: strin
     : [secondId, firstId];
   return { participantLowId, participantHighId };
 }
+
+export function hasUnreadMessage({
+  senderId,
+  residentId,
+  messageCreatedAt,
+  readAt,
+}: {
+  senderId: string;
+  residentId: string;
+  messageCreatedAt: Date;
+  readAt: Date | null;
+}) {
+  return senderId !== residentId && (!readAt || messageCreatedAt > readAt);
+}
