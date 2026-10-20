@@ -1,0 +1,164 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { requireRole } from "@/lib/api-auth";
+import { db } from "@/lib/db";
+
+const messageSchema = z.object({
+  friendId: z.string().min(1),
+  content: z.string().trim().min(1).max(2000),
+});
+
+function orderedPair(firstId: string, secondId: string) {
+  return firstId < secondId
+    ? { participantLowId: firstId, participantHighId: secondId }
+    : { participantLowId: secondId, participantHighId: firstId };
+}
+
+async function isFriend(firstId: string, secondId: string) {
+  const pair = firstId < secondId
+    ? { userLowId: firstId, userHighId: secondId }
+    : { userLowId: secondId, userHighId: firstId };
+  return db.friendship.findUnique({ where: { userLowId_userHighId: pair } });
+}
+
+export async function GET(request: Request) {
+  const authResult = await requireRole(["RESIDENT"]);
+  if ("error" in authResult) return authResult.error;
+  const userId = authResult.session.user.id;
+  const conversationId = new URL(request.url).searchParams.get("conversationId");
+
+  try {
+    if (conversationId) {
+      const conversation = await db.directConversation.findFirst({
+        where: {
+          id: conversationId,
+          OR: [{ participantLowId: userId }, { participantHighId: userId }],
+        },
+        include: {
+          participantLow: {
+            select: { id: true, name: true, image: true, isActive: true },
+          },
+          participantHigh: {
+            select: { id: true, name: true, image: true, isActive: true },
+          },
+          messages: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: "asc" },
+            take: 200,
+            select: {
+              id: true,
+              senderId: true,
+              content: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+      if (!conversation) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+      const friendId = conversation.participantLowId === userId
+        ? conversation.participantHighId
+        : conversation.participantLowId;
+      if (!(await isFriend(userId, friendId))) {
+        return NextResponse.json({ error: "Messaging is available to friends only" }, { status: 403 });
+      }
+      const friend = conversation.participantLowId === userId
+        ? conversation.participantHigh
+        : conversation.participantLow;
+      if (!friend.isActive) return NextResponse.json({ error: "Resident unavailable" }, { status: 404 });
+      return NextResponse.json({
+        conversation: {
+          id: conversation.id,
+          theme: conversation.theme,
+          backgroundImageUrl: conversation.backgroundImageUrl,
+          friend: { id: friend.id, name: friend.name, image: friend.image },
+          messages: conversation.messages,
+        },
+      });
+    }
+
+    const conversations = await db.directConversation.findMany({
+      where: {
+        OR: [{ participantLowId: userId }, { participantHighId: userId }],
+      },
+      include: {
+        participantLow: { select: { id: true, name: true, image: true, isActive: true } },
+        participantHigh: { select: { id: true, name: true, image: true, isActive: true } },
+        messages: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { content: true, createdAt: true, senderId: true },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    const visibleConversations = [];
+    for (const conversation of conversations) {
+      const friendId = conversation.participantLowId === userId
+        ? conversation.participantHighId
+        : conversation.participantLowId;
+      const friend = conversation.participantLowId === userId
+        ? conversation.participantHigh
+        : conversation.participantLow;
+      if (friend.isActive && await isFriend(userId, friendId)) {
+        visibleConversations.push({
+          id: conversation.id,
+          theme: conversation.theme,
+          backgroundImageUrl: conversation.backgroundImageUrl,
+          friend: { id: friend.id, name: friend.name, image: friend.image },
+          lastMessage: conversation.messages[0] ?? null,
+        });
+      }
+    }
+    return NextResponse.json({ conversations: visibleConversations });
+  } catch (error) {
+    console.error("Failed to load resident direct messages", error);
+    return NextResponse.json({ error: "Unable to load messages" }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  const authResult = await requireRole(["RESIDENT"]);
+  if ("error" in authResult) return authResult.error;
+  const userId = authResult.session.user.id;
+
+  try {
+    const { friendId, content } = messageSchema.parse(await request.json());
+    if (friendId === userId) return NextResponse.json({ error: "You cannot message yourself" }, { status: 400 });
+    const friendship = await isFriend(userId, friendId);
+    if (!friendship) return NextResponse.json({ error: "You can message friends only" }, { status: 403 });
+
+    const friend = await db.user.findFirst({
+      where: { id: friendId, role: "RESIDENT", isActive: true },
+      select: { id: true },
+    });
+    if (!friend) return NextResponse.json({ error: "Resident unavailable" }, { status: 404 });
+
+    const pair = orderedPair(userId, friendId);
+    const result = await db.$transaction(async (tx) => {
+      const conversation = await tx.directConversation.upsert({
+        where: {
+          participantLowId_participantHighId: pair,
+        },
+        create: pair,
+        update: {},
+      });
+      const message = await tx.directMessage.create({
+        data: { conversationId: conversation.id, senderId: userId, content },
+        select: { id: true, senderId: true, content: true, createdAt: true },
+      });
+      await tx.directConversation.update({
+        where: { id: conversation.id },
+        data: { updatedAt: new Date() },
+      });
+      return { conversation, message };
+    });
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.flatten() }, { status: 400 });
+    }
+    console.error("Failed to send resident direct message", error);
+    return NextResponse.json({ error: "Unable to send message" }, { status: 500 });
+  }
+}
