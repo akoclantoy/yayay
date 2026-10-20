@@ -92,24 +92,42 @@ export async function GET(request: Request) {
       },
       orderBy: { updatedAt: "desc" },
     });
-    const visibleConversations = [];
-    for (const conversation of conversations) {
+    const peerIds = conversations.map((conversation) =>
+      conversation.participantLowId === userId
+        ? conversation.participantHighId
+        : conversation.participantLowId,
+    );
+    const friendships = peerIds.length
+      ? await db.friendship.findMany({
+          where: {
+            OR: [
+              { userLowId: userId, userHighId: { in: peerIds } },
+              { userHighId: userId, userLowId: { in: peerIds } },
+            ],
+          },
+          select: { userLowId: true, userHighId: true },
+        })
+      : [];
+    const friendIds = new Set(friendships.map((friendship) =>
+      friendship.userLowId === userId ? friendship.userHighId : friendship.userLowId,
+    ));
+    const visibleConversations = conversations.flatMap((conversation) => {
       const friendId = conversation.participantLowId === userId
         ? conversation.participantHighId
         : conversation.participantLowId;
       const friend = conversation.participantLowId === userId
         ? conversation.participantHigh
         : conversation.participantLow;
-      if (friend.isActive && await isFriend(userId, friendId)) {
-        visibleConversations.push({
-          id: conversation.id,
-          theme: conversation.theme,
-          backgroundImageUrl: conversation.backgroundImageUrl,
-          friend: { id: friend.id, name: friend.name, image: friend.image },
-          lastMessage: conversation.messages[0] ?? null,
-        });
-      }
-    }
+      return friend.isActive && friendIds.has(friendId)
+        ? [{
+            id: conversation.id,
+            theme: conversation.theme,
+            backgroundImageUrl: conversation.backgroundImageUrl,
+            friend: { id: friend.id, name: friend.name, image: friend.image },
+            lastMessage: conversation.messages[0] ?? null,
+          }]
+        : [];
+    });
     return NextResponse.json({ conversations: visibleConversations });
   } catch (error) {
     console.error("Failed to load resident direct messages", error);

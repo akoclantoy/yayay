@@ -120,9 +120,9 @@ export function ResidentMessenger({
   const messageEndRef = useRef<HTMLDivElement>(null);
 
   const activeFriend = useMemo(() => {
-    if (details) return details.friend;
+    if (details?.id === activeConversationId) return details.friend;
     return data?.friends.find((friend) => friend.id === activeFriendId) ?? null;
-  }, [activeFriendId, data?.friends, details]);
+  }, [activeConversationId, activeFriendId, data?.friends, details]);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -159,14 +159,14 @@ export function ResidentMessenger({
   }, [refresh]);
 
   useEffect(() => {
-    if (!activeConversationId) {
-      setDetails(null);
-      return;
-    }
+    if (!activeConversationId) return;
     let active = true;
     const load = async () => {
       try {
-        await loadDetails(activeConversationId);
+        const response = await requestJson<{ conversation: ConversationDetails }>(
+          `/api/resident/direct-messages?conversationId=${encodeURIComponent(activeConversationId)}`,
+        );
+        if (active) setDetails(response.conversation);
       } catch (cause) {
         if (active) setError(getErrorMessage(cause));
       }
@@ -175,7 +175,7 @@ export function ResidentMessenger({
     return () => {
       active = false;
     };
-  }, [activeConversationId, loadDetails]);
+  }, [activeConversationId]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -196,7 +196,9 @@ export function ResidentMessenger({
           { fps: 10, qrbox: { width: 230, height: 230 } },
           (decodedText: string) => {
             void lookupQr(decodedText);
-            void scanner?.stop();
+            void instance.stop().catch((cause: unknown) => {
+              console.error("[resident-messenger] Could not stop QR scanner after a scan:", cause);
+            });
             setScannerOpen(false);
           },
           () => undefined,
@@ -408,7 +410,8 @@ export function ResidentMessenger({
     setScannerOpen(true);
   }
 
-  const currentTheme = THEMES[details?.theme ?? "forest"] ?? THEMES.forest;
+  const currentDetails = details?.id === activeConversationId ? details : null;
+  const currentTheme = THEMES[currentDetails?.theme ?? "forest"] ?? THEMES.forest;
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-3 py-3 text-[var(--foreground)] sm:px-5 sm:py-5">
@@ -515,7 +518,7 @@ export function ResidentMessenger({
                   ))}
                   {!data?.incomingRequests.length && <p className="px-2 pb-5 text-xs text-muted-foreground">No incoming requests.</p>}
                   <p className="px-2 pb-2 pt-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Sent</p>
-                  {data?.outgoingRequests.map((item) => <div key={item.id} className="mb-2 flex items-center gap-3 rounded-2xl px-3 py-2"><ProfileAvatar resident={item.resident} size="h-9 w-9" /><p className="min-w-0 flex-1 truncate text-sm">{displayName(item.resident)}</p><span className="text-[10px] text-muted-foreground">Pending</span></div>)}
+                  {data?.outgoingRequests.map((item) => <div key={item.id} className="mb-2 flex items-center gap-3 rounded-2xl px-3 py-2"><ProfileAvatar resident={item.resident} size="h-9 w-9" /><p className="min-w-0 flex-1 truncate text-sm">{displayName(item.resident)}</p><button type="button" disabled={working} onClick={() => void cancelRequest(item.id)} className="text-[10px] font-semibold text-muted-foreground hover:text-danger">Cancel</button></div>)}
                   {!data?.outgoingRequests.length && <p className="px-2 text-xs text-muted-foreground">No sent requests.</p>}
                 </div>
               ) : (
@@ -545,15 +548,15 @@ export function ResidentMessenger({
                   </div>
                 </header>
 
-                {themeOpen && <div className="absolute right-4 top-[68px] z-20 w-[min(340px,calc(100%-2rem))] rounded-2xl border border-border bg-white p-4 shadow-xl sm:right-7"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Shared chat appearance</p><button type="button" onClick={() => setThemeOpen(false)} aria-label="Close appearance settings" className="text-muted-foreground"><X className="h-4 w-4" /></button></div><p className="mt-1 text-xs text-muted-foreground">Changes are visible to both friends.</p><div className="mt-3 grid grid-cols-5 gap-2">{Object.entries(THEMES).map(([key, theme]) => <button key={key} type="button" title={theme.label} onClick={() => void saveTheme(key)} className={cn("h-10 rounded-xl border-2 transition hover:scale-105", details?.theme === key ? "border-primary" : "border-white shadow")} style={{ background: theme.background }} />)}</div><label className="mt-4 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5 text-sm hover:border-primary/40"><ImagePlus className="h-4 w-4 text-primary" /><span className="min-w-0 flex-1 truncate">{backgroundFile?.name ?? "Upload background image"}</span><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => setBackgroundFile(event.target.files?.[0] ?? null)} /></label>{backgroundFile && <Button size="sm" className="mt-2 w-full" disabled={working} onClick={() => void saveTheme()}>{working ? "Saving..." : "Share background"}</Button>}</div>}
+                {themeOpen && <div className="absolute right-4 top-[68px] z-20 w-[min(340px,calc(100%-2rem))] rounded-2xl border border-border bg-white p-4 shadow-xl sm:right-7"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Shared chat appearance</p><button type="button" onClick={() => setThemeOpen(false)} aria-label="Close appearance settings" className="text-muted-foreground"><X className="h-4 w-4" /></button></div><p className="mt-1 text-xs text-muted-foreground">Changes are visible to both friends.</p><div className="mt-3 grid grid-cols-5 gap-2">{Object.entries(THEMES).map(([key, theme]) => <button key={key} type="button" title={theme.label} onClick={() => void saveTheme(key)} className={cn("h-10 rounded-xl border-2 transition hover:scale-105", currentDetails?.theme === key ? "border-primary" : "border-white shadow")} style={{ background: theme.background }} />)}</div><label className="mt-4 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5 text-sm hover:border-primary/40"><ImagePlus className="h-4 w-4 text-primary" /><span className="min-w-0 flex-1 truncate">{backgroundFile?.name ?? "Upload background image"}</span><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => setBackgroundFile(event.target.files?.[0] ?? null)} /></label>{backgroundFile && <Button size="sm" className="mt-2 w-full" disabled={working} onClick={() => void saveTheme()}>{working ? "Saving..." : "Share background"}</Button>}</div>}
 
-                <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-8" style={{ background: currentTheme.background, ...(details?.backgroundImageUrl ? { backgroundImage: `linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,.72)), url("${details.backgroundImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" } : {}) }}>
+                <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-8" style={{ background: currentTheme.background, ...(currentDetails?.backgroundImageUrl ? { backgroundImage: `linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,.72)), url("${currentDetails.backgroundImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" } : {}) }}>
                   <div className="mx-auto mb-5 max-w-sm text-center"><span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm"><Leaf className="h-3 w-3" />Your EcoRewards connection</span><p className="mt-2 text-xs text-muted-foreground">Messages are private between friends.</p></div>
-                  {details?.messages.map((message) => {
+                  {currentDetails?.messages.map((message) => {
                     const mine = message.senderId !== activeFriend.id;
                     return <div key={message.id} className={cn("mb-3 flex w-full", mine ? "justify-end" : "justify-start")}><div className={cn("max-w-[min(82%,520px)] rounded-2xl px-4 py-2.5 shadow-sm", mine ? "rounded-br-md bg-primary text-white" : "rounded-bl-md border border-white/70 bg-white/90 text-foreground")}><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.content}</p><div className={cn("mt-1 flex items-center justify-end gap-1 text-[10px]", mine ? "text-white/70" : "text-muted-foreground")}>{dateFormatter.format(new Date(message.createdAt))}{mine && <CheckCheck className="h-3 w-3" />}</div></div></div>;
                   })}
-                  {activeConversationId && !details && <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading conversation…</div>}
+                  {activeConversationId && !currentDetails && <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading conversation…</div>}
                   {!activeConversationId && <div className="flex flex-1 flex-col items-center justify-center text-center"><div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white/80 text-primary shadow-sm"><MessageCircle className="h-7 w-7" /></div><p className="font-semibold">Start a conversation</p><p className="mt-1 max-w-xs text-sm text-muted-foreground">Send a friendly message to {displayName(activeFriend)}.</p></div>}
                   <div ref={messageEndRef} />
                 </div>
