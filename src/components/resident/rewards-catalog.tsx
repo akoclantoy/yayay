@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { formatPoints, formatCurrency } from "@/lib/utils";
+import { formatDate, formatPoints, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -152,7 +152,7 @@ export function RewardsCatalog({
                 <div>
                   <p className="font-medium">{r.reward.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(r.createdAt).toLocaleDateString()}
+                    {formatDate(r.createdAt)}
                   </p>
                 </div>
                 <Badge variant={r.status === "FULFILLED" ? "success" : "secondary"}>

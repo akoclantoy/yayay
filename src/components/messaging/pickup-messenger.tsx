@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { cn, getInitials } from "@/lib/utils";
+import { cn, formatDateTime, getInitials } from "@/lib/utils";
 
 type Message = {
   id: string;
@@ -77,10 +77,7 @@ function responseError(value: unknown, fallback: string) {
 }
 
 function localDate(value: string) {
-  return new Date(value).toLocaleString([], {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return formatDateTime(value);
 }
 
 export function PickupMessenger({ userId }: { userId: string }) {

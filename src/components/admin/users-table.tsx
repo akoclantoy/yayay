@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ROLE_LABELS } from "@/lib/constants";
+import { formatDate } from "@/lib/utils";
 import type { UserRole } from "@/generated/prisma/enums";
 import { RemoveStaffButton } from "@/components/admin/remove-staff-button";
 
@@ -103,7 +104,7 @@ export function UsersTable({ users }: { users: User[] }) {
                       {user.isActive ? "Active" : "Inactive"}
                     </Badge>
                   </td>
-                  <td className="py-3 pr-4">{new Date(user.createdAt).toLocaleDateString()}</td>
+                  <td className="py-3 pr-4">{formatDate(user.createdAt)}</td>
                   <td className="py-3 text-right">
                     {(user.role === "COLLECTION_STAFF" || user.role === "BARANGAY_STAFF") && (
                       <RemoveStaffButton userId={user.id} name={user.name ?? user.email} />

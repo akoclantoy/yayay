@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { formatPoints } from "@/lib/utils";
+import { formatDateTime, formatPoints } from "@/lib/utils";
 import { parseGcashNotes } from "@/lib/gcash-redemption";
 
 type Redemption = {
@@ -134,7 +134,7 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
             </p>
             {renderNotes(r)}
             <p className="text-xs text-muted-foreground">
-              Requested {new Date(r.createdAt).toLocaleString()}
+              Requested {formatDateTime(r.createdAt)}
             </p>
             {r.status === "PENDING" && (
               <div className="flex flex-wrap gap-2 pt-2">

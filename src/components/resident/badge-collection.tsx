@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { formatDateTime, formatNumber } from "@/lib/utils";
 
 type BadgeEntry = {
   id: string;
@@ -86,7 +87,7 @@ export function BadgeCollection({
           </div>
           <div className="flex gap-6 rounded-xl border border-white/70 bg-white/60 px-5 py-4 backdrop-blur-sm">
             <div><p className="text-2xl font-semibold text-emerald-950">{earnedCount}<span className="text-base text-emerald-950/50">/{badges.length}</span></p><p className="text-xs text-emerald-950/65">earned</p></div>
-            <div className="border-l border-emerald-950/15 pl-6"><p className="text-2xl font-semibold text-emerald-950">{claimablePoints.toLocaleString()}</p><p className="text-xs text-emerald-950/65">points ready to claim</p></div>
+            <div className="border-l border-emerald-950/15 pl-6"><p className="text-2xl font-semibold text-emerald-950">{formatNumber(claimablePoints)}</p><p className="text-xs text-emerald-950/65">points ready to claim</p></div>
           </div>
         </div>
       </header>
@@ -99,7 +100,7 @@ export function BadgeCollection({
           <Target className="h-4 w-4 shrink-0 text-primary" />
           <span>
             Your verified lifetime recycling total:{" "}
-            <strong>{totalWeightKg.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg</strong>
+            <strong>{formatNumber(totalWeightKg)} kg</strong>
           </span>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -145,12 +146,12 @@ export function BadgeCollection({
                     <div className="mt-4 space-y-1.5">
                       <div className="flex justify-between gap-3 text-xs">
                         <span className="font-medium">
-                          Reach {targetWeightKg.toLocaleString()} kg to unlock bonus
+                          Reach {formatNumber(targetWeightKg)} kg to unlock bonus
                         </span>
                         <span className="text-muted-foreground">
-                          {Math.min(totalWeightKg, targetWeightKg).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          {formatNumber(Math.min(totalWeightKg, targetWeightKg))}
                           {" / "}
-                          {targetWeightKg.toLocaleString()} kg
+                          {formatNumber(targetWeightKg)} kg
                         </span>
                       </div>
                       <div
@@ -172,7 +173,7 @@ export function BadgeCollection({
                         </p>
                       ) : (
                         <p className="text-xs text-muted-foreground">
-                          {(targetWeightKg - totalWeightKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} kg more to earn this badge
+                          {formatNumber(targetWeightKg - totalWeightKg)} kg more to earn this badge
                         </p>
                       )}
                     </div>
@@ -185,7 +186,7 @@ export function BadgeCollection({
                     <div>
                       <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-800">
                         <Gift className="h-4 w-4" />
-                        {badge.points.toLocaleString()} points
+                        {formatNumber(badge.points)} points
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Claimable bonus added to your reward wallet
@@ -205,9 +206,9 @@ export function BadgeCollection({
                   </div>
                   {earned && badge.earnedAt && (
                     <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                      <p>Earned {new Date(badge.earnedAt).toLocaleString()}</p>
+                      <p>Earned {formatDateTime(badge.earnedAt)}</p>
                       {claimed && badge.claimedAt && (
-                        <p>Bonus claimed {new Date(badge.claimedAt).toLocaleString()}</p>
+                        <p>Bonus claimed {formatDateTime(badge.claimedAt)}</p>
                       )}
                     </div>
                   )}

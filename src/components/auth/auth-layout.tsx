@@ -41,7 +41,7 @@ export function AuthLayout({
           </p>
         </div>
         <p className="relative text-white/60 text-sm">
-          © {new Date().getFullYear()} {APP_NAME}. All rights reserved.
+          © {new Date().getUTCFullYear()} {APP_NAME}. All rights reserved.
         </p>
       </div>
 

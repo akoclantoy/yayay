@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { formatDateTime } from "@/lib/utils";
 
 type Announcement = {
   id: string;
@@ -121,7 +122,7 @@ export function AnnouncementManager({ initial }: { initial: Announcement[] }) {
         </CardContent>
       </Card>
 
-      {announcements.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">No announcements yet</CardContent></Card> : <div className="space-y-3">{announcements.map((announcement) => <Card key={announcement.id}><CardHeader className="pb-2"><div className="flex flex-wrap items-center gap-2"><CardTitle className="text-base">{announcement.title}</CardTitle>{announcement.isPinned && <Badge variant="secondary">Pinned</Badge>}</div></CardHeader><CardContent className="space-y-3 text-sm"><p className="whitespace-pre-wrap text-muted-foreground">{announcement.content}</p><p className="text-xs text-muted-foreground">{announcement.authorName ?? "System"} · {new Date(announcement.createdAt).toLocaleString()}</p><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => startEdit(announcement)}>Edit</Button><Button size="sm" variant="destructive" onClick={() => void deleteAnnouncement(announcement.id)}>Delete</Button></div></CardContent></Card>)}</div>}
+      {announcements.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">No announcements yet</CardContent></Card> : <div className="space-y-3">{announcements.map((announcement) => <Card key={announcement.id}><CardHeader className="pb-2"><div className="flex flex-wrap items-center gap-2"><CardTitle className="text-base">{announcement.title}</CardTitle>{announcement.isPinned && <Badge variant="secondary">Pinned</Badge>}</div></CardHeader><CardContent className="space-y-3 text-sm"><p className="whitespace-pre-wrap text-muted-foreground">{announcement.content}</p><p className="text-xs text-muted-foreground">{announcement.authorName ?? "System"} · {formatDateTime(announcement.createdAt)}</p><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => startEdit(announcement)}>Edit</Button><Button size="sm" variant="destructive" onClick={() => void deleteAnnouncement(announcement.id)}>Delete</Button></div></CardContent></Card>)}</div>}
     </div>
   );
 }

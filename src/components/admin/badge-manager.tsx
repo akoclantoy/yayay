@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatNumber } from "@/lib/utils";
 
 type BadgeItem = {
   id: string;
@@ -223,10 +224,10 @@ export function BadgeManager({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{badge.name}</h3><Badge variant="secondary">{badge.awards} awarded</Badge></div>
                   <p className="mt-1 text-sm text-muted-foreground">{badge.description || badge.criteria || "No description added"}</p>
-                  {badge.targetWeightKg !== null && <p className="mt-1 text-xs text-muted-foreground">Lifetime target: {badge.targetWeightKg.toLocaleString()} kg</p>}
+                  {badge.targetWeightKg !== null && <p className="mt-1 text-xs text-muted-foreground">Lifetime target: {formatNumber(badge.targetWeightKg)} kg</p>}
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end">
-                  <p className="whitespace-nowrap text-sm font-semibold text-emerald-800">{badge.points.toLocaleString()} pts</p>
+                  <p className="whitespace-nowrap text-sm font-semibold text-emerald-800">{formatNumber(badge.points)} pts</p>
                   <Button type="button" variant="outline" size="sm" onClick={() => editBadge(badge)} aria-label={`Edit ${badge.name}`}><Pencil /> Edit</Button>
                 </div>
               </CardContent>
