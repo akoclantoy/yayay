@@ -178,6 +178,29 @@ export function ResidentMessenger({
   }, [activeConversationId]);
 
   useEffect(() => {
+    if (!activeConversationId) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      const updateOpenConversation = async () => {
+        try {
+          const [conversationResponse, messageResponse] = await Promise.all([
+            requestJson<{ conversations: Conversation[] }>("/api/resident/direct-messages"),
+            requestJson<{ conversation: ConversationDetails }>(
+              `/api/resident/direct-messages?conversationId=${encodeURIComponent(activeConversationId)}`,
+            ),
+          ]);
+          setConversations(conversationResponse.conversations);
+          setDetails(messageResponse.conversation);
+        } catch (cause) {
+          setError(getErrorMessage(cause));
+        }
+      };
+      void updateOpenConversation();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [activeConversationId]);
+
+  useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [details?.messages.length]);
 
@@ -272,12 +295,12 @@ export function ResidentMessenger({
     setWorking(true);
     setError(null);
     try {
-      await requestJson("/api/resident/friends", {
+      const response = await requestJson<{ requestId: string }>("/api/resident/friends", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ qrCode: profile.qrCode }),
       });
-      setProfile({ ...profile, outgoingRequest: "sent" });
+      setProfile({ ...profile, outgoingRequest: response.requestId });
       await refresh();
       setNotice("Friend request sent.");
     } catch (cause) {
@@ -380,6 +403,7 @@ export function ResidentMessenger({
       const form = new FormData();
       form.set("conversationId", activeConversationId);
       if (theme) form.set("theme", theme);
+      if (theme) form.set("clearBackground", "true");
       if (backgroundFile) form.set("background", backgroundFile);
       await requestJson("/api/resident/chat-theme", { method: "PATCH", body: form });
       setBackgroundFile(null);
