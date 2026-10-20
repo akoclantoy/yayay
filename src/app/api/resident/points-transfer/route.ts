@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       });
       await tx.directConversation.update({
         where: { id: conversation.id },
-        data: { updatedAt: pointTransfer.createdAt },
+        data: { updatedAt: new Date() },
       });
       await tx.rewardTransaction.createMany({
         data: [

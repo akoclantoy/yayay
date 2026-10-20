@@ -311,6 +311,9 @@ export async function PATCH(request: Request) {
           return NextResponse.json(updated);
         }
         await db.$transaction(async (tx) => {
+          await tx.directMessageReaction.deleteMany({
+            where: { messageId: message.id },
+          });
           await tx.directMessage.update({
             where: { id: message.id },
             data: { deletedAt: new Date() },
