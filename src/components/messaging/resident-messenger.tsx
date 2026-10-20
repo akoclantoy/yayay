@@ -184,13 +184,14 @@ export function ResidentMessenger({
   useEffect(() => {
     if (!scannerOpen) return;
     let active = true;
-    let scanner: { start: (...args: unknown[]) => Promise<void>; stop: () => Promise<void>; clear: () => Promise<void> } | null = null;
+    let scanner: import("html5-qrcode").Html5Qrcode | null = null;
     const startScanner = async () => {
       try {
         const { Html5Qrcode } = await import("html5-qrcode");
         if (!active) return;
-        scanner = new Html5Qrcode("resident-qr-reader");
-        await scanner.start(
+        const instance = new Html5Qrcode("resident-qr-reader");
+        scanner = instance;
+        await instance.start(
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 230, height: 230 } },
           (decodedText: string) => {
