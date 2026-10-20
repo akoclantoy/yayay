@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ImagePlus,
   MessageCircle,
+  MapPin,
   MoreHorizontal,
   Ban,
   Pencil,
@@ -27,6 +28,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { PickupMessenger } from "@/components/messaging/pickup-messenger";
 import { cn } from "@/lib/utils";
 
 type Resident = { id: string; name: string | null; image: string | null; qrCode?: string };
@@ -135,10 +137,12 @@ export function ResidentMessenger({
   residentName,
   residentImage,
   residentId,
+  onPickupMessages,
 }: {
   residentName: string;
   residentImage: string | null;
   residentId: string;
+  onPickupMessages?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("inbox");
   const [data, setData] = useState<MessengerData | null>(null);
@@ -623,7 +627,8 @@ export function ResidentMessenger({
 
   async function submitTransfer(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!profile?.qrCode || !profile.isFriend) {
+    const recipient = profile;
+    if (!recipient?.qrCode || !recipient.isFriend) {
       setError("Scan a friend's QR code before starting a points transfer.");
       return;
     }
@@ -638,13 +643,13 @@ export function ResidentMessenger({
       const result = await requestJson<{ balance: number; conversationId: string }>("/api/resident/points-transfer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipientQrCode: profile.qrCode, amount }),
+        body: JSON.stringify({ recipientQrCode: recipient.qrCode, amount }),
       });
       setTransferBalance(result.balance);
       setTransferAmount("");
       setTransferMode(false);
-      setNotice(`${amount.toLocaleString("en-US")} points sent to ${displayName(profile)}.`);
-      setActiveFriendId(profile.id);
+      setNotice(`${amount.toLocaleString("en-US")} points sent to ${displayName(recipient)}.`);
+      setActiveFriendId(recipient.id);
       setActiveConversationId(result.conversationId);
       setDetails(null);
       setTab("inbox");
@@ -792,6 +797,12 @@ export function ResidentMessenger({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {onPickupMessages && (
+              <Button variant="outline" size="sm" onClick={onPickupMessages}>
+                <MapPin className="h-4 w-4" />
+                <span className="hidden sm:inline">Pickup messages</span>
+              </Button>
+            )}
             <span className="hidden text-sm text-muted-foreground md:inline">Hello, {residentName.split(" ")[0]}</span>
             <ProfileAvatar resident={{ id: "me", name: residentName, image: residentImage }} size="h-9 w-9" />
             <Link href="/resident" aria-label="Return to resident dashboard" title="Back to dashboard" className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-accent/20 text-primary transition hover:bg-accent/35">
@@ -946,6 +957,17 @@ export function ResidentMessenger({
                     <div className="min-w-0"><p className="truncate text-sm font-bold">{displayName(activeFriend)}</p><p className="mt-0.5 text-xs text-primary">EcoRewards friend</p></div>
                   </div>
                   <div className="flex items-center gap-1">
+                    {onPickupMessages && (
+                      <button
+                        type="button"
+                        title="Pickup support messages"
+                        aria-label="Open pickup support messages"
+                        onClick={onPickupMessages}
+                        className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"
+                      >
+                        <MapPin className="h-5 w-5" />
+                      </button>
+                    )}
                     <button type="button" title="Transfer points by scanning their QR code" onClick={() => void startTransferScan()} className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Wallet className="h-5 w-5" /></button>
                     <button type="button" title="Conversation appearance" onClick={() => setThemeOpen((open) => !open)} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><Settings2 className="h-5 w-5" /></button>
                     <button type="button" title="Conversation settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen((open) => !open); setThemeOpen(false); }} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><MoreHorizontal className="h-5 w-5" /></button>
@@ -1128,6 +1150,47 @@ export function ResidentMessenger({
 
       {loading && <span className="sr-only" aria-live="polite">Loading messenger</span>}
     </main>
+  );
+}
+
+export function ResidentMessagingHub({
+  residentName,
+  residentImage,
+  residentId,
+}: {
+  residentName: string;
+  residentImage: string | null;
+  residentId: string;
+}) {
+  const [showPickupMessages, setShowPickupMessages] = useState(false);
+
+  if (showPickupMessages) {
+    return (
+      <main className="min-h-screen bg-[var(--background)] px-3 py-4 text-[var(--foreground)] sm:px-5 sm:py-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-white/90 p-4 shadow-sm">
+            <div>
+              <h1 className="font-semibold">Pickup support messages</h1>
+              <p className="text-xs text-muted-foreground">Updates and conversations about your collection requests.</p>
+            </div>
+            <Button variant="outline" onClick={() => setShowPickupMessages(false)}>
+              <MessageCircle className="h-4 w-4" />
+              Friend messages
+            </Button>
+          </div>
+          <PickupMessenger userId={residentId} />
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <ResidentMessenger
+      residentName={residentName}
+      residentImage={residentImage}
+      residentId={residentId}
+      onPickupMessages={() => setShowPickupMessages(true)}
+    />
   );
 }
 

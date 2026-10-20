@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { ResidentMessenger } from "@/components/messaging/resident-messenger";
+import { ResidentMessagingHub } from "@/components/messaging/resident-messenger";
 
 export default async function ResidentMessagesPage() {
   const session = await auth();
@@ -10,7 +10,7 @@ export default async function ResidentMessagesPage() {
   }
 
   return (
-    <ResidentMessenger
+    <ResidentMessagingHub
       residentName={session.user.name ?? "Resident"}
       residentImage={session.user.image ?? null}
       residentId={session.user.id}
