@@ -159,6 +159,10 @@ export function DashboardShell({
       });
   }, [activeHref, refreshUnreadActivity, session?.user?.id]);
 
+  if (role === "RESIDENT" && pathname === "/resident/messages") {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex min-h-screen">
       {/* Mobile overlay */}
