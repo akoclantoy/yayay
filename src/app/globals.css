@@ -120,3 +120,25 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+@keyframes page-enter {
+  from {
+    opacity: 0.65;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-transition {
+  animation: page-enter 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition,
+  .skeleton-shimmer {
+    animation: none;
+  }
+}
