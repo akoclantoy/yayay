@@ -172,7 +172,7 @@ export function DashboardShell({
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed lg:sticky top-0 z-50 h-screen flex flex-col glass border-r border-border/50 transition-all duration-300",
+          "fixed left-0 top-0 z-50 h-screen flex flex-col glass border-r border-border/50 transition-all duration-300",
           collapsed ? "w-[72px]" : "w-64",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
@@ -285,7 +285,12 @@ export function DashboardShell({
       </aside>
 
       {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 flex-col transition-[margin] duration-300",
+          collapsed ? "lg:ml-[72px]" : "lg:ml-64"
+        )}
+      >
         <header className="sticky top-0 z-30 flex min-h-20 items-center gap-4 border-b border-border/70 bg-background/85 px-4 backdrop-blur-xl lg:px-8">
           <button
             onClick={() => setMobileOpen(true)}

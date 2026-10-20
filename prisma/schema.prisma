@@ -57,6 +57,14 @@ enum TransactionType {
   ADJUSTMENT
   BONUS
   REFUND
+  TRANSFER
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
 }
 
 enum NotificationChannel {
@@ -108,6 +116,15 @@ model User {
   residentConversations   Conversation[]           @relation("ConversationResident")
   staffConversations      Conversation[]           @relation("ConversationStaff")
   sentMessages            ConversationMessage[]    @relation("MessageSender")
+  friendRequestsSent      FriendRequest[]           @relation("FriendRequestSender")
+  friendRequestsReceived  FriendRequest[]           @relation("FriendRequestRecipient")
+  friendshipsLow          Friendship[]              @relation("FriendshipLow")
+  friendshipsHigh         Friendship[]              @relation("FriendshipHigh")
+  directConversationsLow  DirectConversation[]      @relation("DirectConversationLow")
+  directConversationsHigh DirectConversation[]      @relation("DirectConversationHigh")
+  directMessages          DirectMessage[]
+  sentPointTransfers      PointTransfer[]           @relation("PointTransferSender")
+  receivedPointTransfers  PointTransfer[]           @relation("PointTransferRecipient")
 
   @@index([role])
   @@index([email])
@@ -441,6 +458,83 @@ model ConversationMessage {
 
   @@index([conversationId, createdAt])
   @@index([senderId])
+}
+
+model FriendRequest {
+  id          String             @id @default(cuid())
+  senderId    String
+  recipientId String
+  status      FriendRequestStatus @default(PENDING)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  sender    User @relation("FriendRequestSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User @relation("FriendRequestRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, recipientId])
+  @@index([recipientId, status, createdAt])
+  @@index([senderId, status, createdAt])
+}
+
+model Friendship {
+  id          String   @id @default(cuid())
+  userLowId   String
+  userHighId  String
+  createdAt   DateTime @default(now())
+
+  userLow  User @relation("FriendshipLow", fields: [userLowId], references: [id], onDelete: Cascade)
+  userHigh User @relation("FriendshipHigh", fields: [userHighId], references: [id], onDelete: Cascade)
+
+  @@unique([userLowId, userHighId])
+  @@index([userLowId, createdAt])
+  @@index([userHighId, createdAt])
+}
+
+model DirectConversation {
+  id                String   @id @default(cuid())
+  participantLowId  String
+  participantHighId String
+  theme             String   @default("forest")
+  backgroundImageUrl String? @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  participantLow  User            @relation("DirectConversationLow", fields: [participantLowId], references: [id], onDelete: Cascade)
+  participantHigh User            @relation("DirectConversationHigh", fields: [participantHighId], references: [id], onDelete: Cascade)
+  messages        DirectMessage[]
+
+  @@unique([participantLowId, participantHighId])
+  @@index([participantLowId, updatedAt])
+  @@index([participantHighId, updatedAt])
+}
+
+model DirectMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String   @db.Text
+  createdAt      DateTime @default(now())
+  deletedAt      DateTime?
+
+  conversation DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User               @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+model PointTransfer {
+  id          String   @id @default(cuid())
+  senderId    String
+  recipientId String
+  amount      Int
+  createdAt   DateTime @default(now())
+
+  sender    User @relation("PointTransferSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User @relation("PointTransferRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, createdAt])
+  @@index([recipientId, createdAt])
 }
 
 model PickupRoute {
