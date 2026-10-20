@@ -289,7 +289,7 @@ export function ResidentMessenger({
         });
       }
     };
-  }, [scannerOpen, transferMode]);
+  }, [connectByQr, lookupQr, scannerOpen, transferMode]);
 
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -301,7 +301,7 @@ export function ResidentMessenger({
     return (data?.friends ?? []).filter((friend) => displayName(friend).toLocaleLowerCase().includes(query));
   }, [data?.friends, search]);
 
-  async function lookupQr(qrCode: string) {
+  const lookupQr = useCallback(async (qrCode: string) => {
     try {
       setError(null);
       const response = await requestJson<{ profile: FriendProfile }>(
@@ -312,9 +312,9 @@ export function ResidentMessenger({
     } catch (cause) {
       setError(getErrorMessage(cause));
     }
-  }
+  }, []);
 
-  async function connectByQr(qrCode: string) {
+  const connectByQr = useCallback(async (qrCode: string) => {
     setWorking(true);
     setError(null);
     try {
@@ -327,11 +327,17 @@ export function ResidentMessenger({
         },
       );
       await refresh();
+      const conversationResponse = await requestJson<{ conversations: Conversation[] }>(
+        "/api/resident/direct-messages",
+      );
+      setConversations(conversationResponse.conversations);
       setProfile(null);
       setTab("inbox");
       setActiveFriendId(result.friend.id);
       setActiveConversationId(
-        conversations.find((conversation) => conversation.friend.id === result.friend.id)?.id ?? null,
+        conversationResponse.conversations.find(
+          (conversation) => conversation.friend.id === result.friend.id,
+        )?.id ?? null,
       );
       setDetails(null);
       setNotice(result.connectedNow
@@ -342,9 +348,13 @@ export function ResidentMessenger({
     } finally {
       setWorking(false);
     }
-  }
+  }, [refresh]);
 
-  async function updateRequest(requestId: string, action: "ACCEPT" | "DECLINE") {
+  async function updateRequest(
+    requestId: string,
+    action: "ACCEPT" | "DECLINE",
+    residentId?: string,
+  ) {
     setWorking(true);
     setError(null);
     try {
@@ -354,6 +364,17 @@ export function ResidentMessenger({
         body: JSON.stringify({ requestId, action }),
       });
       await refresh();
+      if (residentId) {
+        setDirectoryResidents((current) => current.map((resident) =>
+          resident.id === residentId
+            ? {
+                ...resident,
+                isFriend: action === "ACCEPT",
+                incomingRequest: null,
+              }
+            : resident,
+        ));
+      }
       setNotice(action === "ACCEPT" ? "You are now friends." : "Friend request declined.");
     } catch (cause) {
       setError(getErrorMessage(cause));
@@ -699,7 +720,7 @@ export function ResidentMessenger({
                         {resident.isFriend ? (
                           <Button size="sm" className="h-9 flex-1" onClick={() => openDirectoryFriend(resident)}><MessageCircle className="h-4 w-4" />Message</Button>
                         ) : resident.incomingRequest ? (
-                          <Button size="sm" className="h-9 flex-1" disabled={working} onClick={() => void updateRequest(resident.incomingRequest!, "ACCEPT")}><Check className="h-4 w-4" />Accept request</Button>
+                          <Button size="sm" className="h-9 flex-1" disabled={working} onClick={() => void updateRequest(resident.incomingRequest!, "ACCEPT", resident.id)}><Check className="h-4 w-4" />Accept request</Button>
                         ) : resident.outgoingRequest ? (
                           <Button size="sm" variant="secondary" className="h-9 flex-1" disabled={working} onClick={() => void cancelRequest(resident.outgoingRequest!, resident.id)}><X className="h-4 w-4" />Cancel request</Button>
                         ) : (
