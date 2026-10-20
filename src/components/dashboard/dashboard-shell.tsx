@@ -218,6 +218,8 @@ export function DashboardShell({
               item.href === "/staff" ||
               item.href === "/admin";
             const isActive = isRoot ? pathname === item.href : active;
+            const NavigationLink =
+              item.href === "/resident/badges" ? "a" : Link;
 
             return (
               <motion.div
@@ -225,7 +227,7 @@ export function DashboardShell({
                 whileHover={{ x: 2 }}
                 transition={{ type: "spring", stiffness: 400, damping: 28 }}
               >
-                <Link
+                <NavigationLink
                   href={item.href}
                   className={cn(
                     "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all active:scale-[0.98]",
@@ -246,7 +248,7 @@ export function DashboardShell({
                     )}
                   </span>
                   {!collapsed && <span>{item.label}</span>}
-                </Link>
+                </NavigationLink>
               </motion.div>
             );
           })}
