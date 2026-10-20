@@ -9,6 +9,7 @@ import {
   Flame,
   ArrowRight,
   Trophy,
+  Award,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -189,16 +190,22 @@ export default async function ResidentDashboardPage() {
               <CardTitle className="text-base">Quick actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Link href="/resident/qr-card" className="block">
-                <Button variant="outline" className="w-full justify-start">
+              <Button asChild variant="outline" className="w-full justify-start">
+                <Link href="/resident/badges">
+                  <Award className="h-4 w-4" />
+                  View badges
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="w-full justify-start">
+                <Link href="/resident/qr-card">
                   Show QR card
-                </Button>
-              </Link>
-              <Link href="/resident/pickup" className="block">
-                <Button variant="outline" className="w-full justify-start">
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="w-full justify-start">
+                <Link href="/resident/pickup">
                   Request pickup
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         </div>
