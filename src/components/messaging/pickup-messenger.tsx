@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ImagePlus,
   LoaderCircle,
@@ -44,6 +44,11 @@ type Conversation = {
 };
 
 type MessageResponse = { conversation: Conversation; messages: Message[] };
+type UserRole = "RESIDENT" | "COLLECTION_STAFF" | "BARANGAY_STAFF" | "ADMIN";
+type ConversationGroup = {
+  resident: Conversation["resident"];
+  conversations: Conversation[];
+};
 
 function isMessage(value: unknown): value is Message {
   if (typeof value !== "object" || value === null) return false;
@@ -80,7 +85,15 @@ function localDate(value: string) {
   return formatDateTime(value);
 }
 
-export function PickupMessenger({ userId }: { userId: string }) {
+export function PickupMessenger({
+  userId,
+  role,
+  fullScreen = false,
+}: {
+  userId: string;
+  role: UserRole;
+  fullScreen?: boolean;
+}) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -92,6 +105,30 @@ export function PickupMessenger({ userId }: { userId: string }) {
   const [sending, setSending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const activeConversation = conversations.find((item) => item.id === activeId);
+  const conversationGroups = useMemo(() => {
+    if (role === "RESIDENT") {
+      return conversations.map((conversation) => ({
+        resident: conversation.resident,
+        conversations: [conversation],
+      }));
+    }
+    const groups = new Map<string, ConversationGroup>();
+    for (const conversation of conversations) {
+      const group = groups.get(conversation.resident.id);
+      if (group) {
+        group.conversations.push(conversation);
+      } else {
+        groups.set(conversation.resident.id, {
+          resident: conversation.resident,
+          conversations: [conversation],
+        });
+      }
+    }
+    return [...groups.values()];
+  }, [conversations, role]);
+  const residentPickups = activeConversation && role !== "RESIDENT"
+    ? conversations.filter((conversation) => conversation.resident.id === activeConversation.resident.id)
+    : [];
   const activeIsResident = activeConversation?.resident.id === userId;
   const activeOtherName = activeConversation
     ? activeIsResident
@@ -228,8 +265,14 @@ export function PickupMessenger({ userId }: { userId: string }) {
   }
 
   return (
-    <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
-      <Card className="overflow-hidden">
+    <div className={cn(
+      "mx-auto grid max-w-7xl gap-5 lg:grid-cols-[340px_minmax(0,1fr)]",
+      fullScreen && "h-full min-h-0 w-full max-w-none grid-cols-1 gap-0 lg:grid-cols-[320px_minmax(0,1fr)]",
+    )}>
+      <Card className={cn(
+        "overflow-hidden",
+        fullScreen && "flex min-h-0 flex-col rounded-none border-0 shadow-none lg:border-r",
+      )}>
         <CardHeader className="bg-gradient-to-br from-emerald-950 to-emerald-800 text-white">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-lime-200">Pickup support</p>
           <CardTitle className="flex items-center gap-2">
@@ -237,7 +280,10 @@ export function PickupMessenger({ userId }: { userId: string }) {
           </CardTitle>
           <p className="text-sm text-emerald-100/80">Talk with the staff assigned to your collection.</p>
         </CardHeader>
-        <CardContent className="max-h-[72vh] space-y-2 overflow-y-auto p-3">
+        <CardContent className={cn(
+          "max-h-[72vh] space-y-2 overflow-y-auto p-3",
+          fullScreen && "max-h-none min-h-0 flex-1",
+        )}>
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
               <LoaderCircle className="h-4 w-4 animate-spin" /> Loading conversations
@@ -249,7 +295,10 @@ export function PickupMessenger({ userId }: { userId: string }) {
               <p className="mt-1 text-sm text-muted-foreground">Create a pickup request or wait for a staff member to be assigned.</p>
             </div>
           ) : (
-            conversations.map((conversation) => {
+            conversationGroups.map((group) => {
+              const conversation =
+                group.conversations.find((item) => item.id === activeId) ??
+                group.conversations[0];
               const otherName =
                 conversation.resident.id === userId
                   ? conversation.staff?.name ?? conversation.pickup.assignedStaff?.name ?? "Awaiting staff"
@@ -260,7 +309,7 @@ export function PickupMessenger({ userId }: { userId: string }) {
               const preview = conversation.messages[0];
               return (
                 <button
-                  key={conversation.id}
+                  key={group.resident.id + (role === "RESIDENT" ? `-${conversation.id}` : "")}
                   type="button"
                   onClick={() => setActiveId(conversation.id)}
                   className={cn(
@@ -284,11 +333,17 @@ export function PickupMessenger({ userId }: { userId: string }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate font-semibold">{otherName}</span>
-                        <Badge variant="secondary">{conversation.pickup.status}</Badge>
+                        {group.conversations.length > 1 ? (
+                          <Badge variant="secondary">{group.conversations.length} pickups</Badge>
+                        ) : (
+                          <Badge variant="secondary">{conversation.pickup.status}</Badge>
+                        )}
                       </div>
                       <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
                         <MapPin className="h-3 w-3 shrink-0" />
-                        {conversation.pickup.address}
+                        {group.conversations.length > 1
+                          ? `${group.conversations.length} separate pickup requests`
+                          : conversation.pickup.address}
                       </p>
                     </div>
                   </div>
@@ -302,22 +357,32 @@ export function PickupMessenger({ userId }: { userId: string }) {
         </CardContent>
       </Card>
 
-      <Card className="flex min-h-[560px] flex-col overflow-hidden">
+      <Card className={cn(
+        "flex min-h-[560px] flex-col overflow-hidden",
+        fullScreen && "min-h-0 rounded-none border-0 shadow-none",
+      )}>
         {activeConversation ? (
           <>
             <CardHeader className="border-b bg-card/80">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-3">
-                  <Avatar className="h-14 w-14 border-2 border-background shadow-md ring-2 ring-emerald-700/15">
-                    <AvatarImage
-                      src={activeOtherImage ?? undefined}
-                      alt={`${activeOtherName} profile photo`}
-                      className="object-cover"
-                    />
-                    <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-lime-100 text-lg font-semibold text-emerald-900">
-                      {getInitials(activeOtherName)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <div className="flex shrink-0 flex-col items-center gap-1">
+                    <Avatar className="h-14 w-14 border-2 border-background shadow-md ring-2 ring-emerald-700/15">
+                      <AvatarImage
+                        src={activeOtherImage ?? undefined}
+                        alt={`${activeOtherName} profile photo`}
+                        className="object-cover"
+                      />
+                      <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-lime-100 text-lg font-semibold text-emerald-900">
+                        {getInitials(activeOtherName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    {activeIsResident && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
+                        Staff
+                      </span>
+                    )}
+                  </div>
                   <div className="min-w-0">
                     <CardTitle className="truncate text-lg">{activeOtherName}</CardTitle>
                     <p className="mt-1 flex items-center gap-1 truncate text-sm text-muted-foreground">
@@ -333,9 +398,44 @@ export function PickupMessenger({ userId }: { userId: string }) {
                   )}
                 </div>
               </div>
+              {residentPickups.length > 0 && (
+                <div className="mt-4 border-t pt-3">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    Pickup transactions · choose one to keep messages separate
+                  </p>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {residentPickups.map((conversation) => (
+                      <button
+                        key={conversation.id}
+                        type="button"
+                        onClick={() => setActiveId(conversation.id)}
+                        title={`${conversation.pickup.id} · ${conversation.pickup.address}`}
+                        className={cn(
+                          "min-w-44 max-w-64 shrink-0 rounded-xl border px-3 py-2 text-left transition",
+                          conversation.id === activeId
+                            ? "border-emerald-700/30 bg-emerald-50 ring-1 ring-emerald-700/10"
+                            : "border-border/70 bg-background hover:border-emerald-700/30",
+                        )}
+                      >
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-semibold">
+                            Pickup #{conversation.pickup.id.slice(-8).toUpperCase()}
+                          </span>
+                          <Badge variant="outline" className="shrink-0 text-[9px]">
+                            {conversation.pickup.status}
+                          </Badge>
+                        </span>
+                        <span className="mt-1 block truncate text-[11px] text-muted-foreground">
+                          {conversation.pickup.address}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent className="flex flex-1 flex-col p-0">
-              <div className="flex-1 space-y-3 overflow-y-auto p-4">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
                 {messages.length === 0 ? (
                   <div className="grid h-full min-h-48 place-items-center text-center text-sm text-muted-foreground">
                     <div><MessageCircle className="mx-auto mb-2 h-8 w-8 opacity-40" />Say hello about this pickup.</div>

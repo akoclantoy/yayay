@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import QRCode from "react-qr-code";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   Check,
@@ -135,12 +136,10 @@ function getErrorMessage(error: unknown) {
 
 export function ResidentMessenger({
   residentName,
-  residentImage,
   residentId,
   onPickupMessages,
 }: {
   residentName: string;
-  residentImage: string | null;
   residentId: string;
   onPickupMessages?: () => void;
 }) {
@@ -174,6 +173,14 @@ export function ResidentMessenger({
   const [settingsAction, setSettingsAction] = useState<"unfriend" | "block" | "delete" | null>(null);
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const suppressNextMessageClickRef = useRef(false);
+
+  useEffect(() => () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+    }
+  }, []);
 
   const activeFriend = useMemo(() => {
     if (details?.id === activeConversationId) return details.friend;
@@ -616,6 +623,32 @@ export function ResidentMessenger({
     }
   }
 
+  function startReactionPress(messageId: string, event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+    suppressNextMessageClickRef.current = false;
+    longPressTimerRef.current = window.setTimeout(() => {
+      setReactionPickerId(messageId);
+      suppressNextMessageClickRef.current = true;
+      longPressTimerRef.current = null;
+    }, 450);
+  }
+
+  function finishReactionPress() {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  function toggleReactionPicker(messageId: string) {
+    if (suppressNextMessageClickRef.current) {
+      suppressNextMessageClickRef.current = false;
+      return;
+    }
+    setReactionPickerId((current) => current === messageId ? null : messageId);
+  }
+
   async function loadTransferBalance() {
     try {
       const response = await requestJson<{ balance: number }>("/api/resident/points-transfer");
@@ -783,14 +816,13 @@ export function ResidentMessenger({
   const currentTheme = THEMES[currentDetails?.theme ?? "forest"] ?? THEMES.forest;
 
   return (
-    <main className={cn("min-h-screen bg-[var(--background)] text-[var(--foreground)]", activeFriend ? "fixed inset-0 z-[60] h-[100dvh] overflow-hidden p-0" : "px-3 py-3 sm:px-5 sm:py-5")}>
-      <section className={cn("mx-auto flex flex-col overflow-hidden bg-white/85 backdrop-blur-xl", activeFriend ? "h-full min-h-0 w-full max-w-none rounded-none border-0 shadow-none" : "min-h-[calc(100svh-1.5rem)] max-w-[1600px] rounded-[28px] border border-border/80 shadow-[0_20px_80px_rgba(24,50,42,0.12)] sm:min-h-[calc(100svh-2.5rem)]")}>
+    <main className="h-[100dvh] w-full overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+      <section className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white/85">
         {!activeFriend && <header className="flex h-[76px] shrink-0 items-center justify-between border-b border-border/70 px-4 sm:px-7">
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/resident" aria-label="Return to resident dashboard" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-white text-muted-foreground transition hover:bg-muted hover:text-primary">
               <ArrowLeft className="h-4 w-4" />
             </Link>
-            <ProfileAvatar resident={{ id: "me", name: residentName, image: residentImage }} size="h-10 w-10" />
             <div className="min-w-0">
               <p className="truncate text-sm font-bold tracking-tight sm:text-base">EcoRewards Messenger</p>
               <p className="hidden text-xs text-muted-foreground sm:block">Good conversations grow greener communities</p>
@@ -803,8 +835,6 @@ export function ResidentMessenger({
                 <span className="hidden sm:inline">Pickup messages</span>
               </Button>
             )}
-            <span className="hidden text-sm text-muted-foreground md:inline">Hello, {residentName.split(" ")[0]}</span>
-            <ProfileAvatar resident={{ id: "me", name: residentName, image: residentImage }} size="h-9 w-9" />
             <Link href="/resident" aria-label="Return to resident dashboard" title="Back to dashboard" className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-accent/20 text-primary transition hover:bg-accent/35">
               <Recycle className="h-5 w-5" />
             </Link>
@@ -947,7 +977,7 @@ export function ResidentMessenger({
             </div>
           </aside>
 
-          <section className={cn("relative flex min-w-0 flex-col", activeFriend ? "h-full min-h-0" : "min-h-[60svh] lg:min-h-0", !activeFriend && "hidden lg:flex")}>
+          <section className={cn("relative flex min-w-0 flex-col", activeFriend ? "h-full min-h-0" : "h-full min-h-0 lg:flex", !activeFriend && "hidden")}>
             {activeFriend ? (
               <>
                 <header className="flex min-h-[78px] items-center justify-between border-b border-border/70 px-4 sm:px-7">
@@ -997,8 +1027,42 @@ export function ResidentMessenger({
                           message.systemMessage ? "items-center" : mine ? "items-end" : "items-start",
                         )}
                       >
-                        <div className={cn(
-                          "relative max-w-[min(88%,560px)] rounded-2xl px-4 py-3 shadow-sm",
+                        <div
+                          onPointerDown={(event) => {
+                            if (
+                              editMessageId !== message.id &&
+                              !(event.target instanceof Element && event.target.closest("button,textarea"))
+                            ) {
+                              startReactionPress(message.id, event);
+                            }
+                          }}
+                          onPointerUp={finishReactionPress}
+                          onPointerCancel={finishReactionPress}
+                          onPointerLeave={finishReactionPress}
+                          onClick={() => {
+                            if (editMessageId !== message.id) toggleReactionPicker(message.id);
+                          }}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            finishReactionPress();
+                            suppressNextMessageClickRef.current = false;
+                            setReactionPickerId(message.id);
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              editMessageId !== message.id &&
+                              !(event.target instanceof Element && event.target.closest("button,textarea")) &&
+                              (event.key === "Enter" || event.key === " ")
+                            ) {
+                              event.preventDefault();
+                              toggleReactionPicker(message.id);
+                            }
+                          }}
+                          tabIndex={editMessageId === message.id ? undefined : 0}
+                          aria-label={editMessageId === message.id ? undefined : "Press to react to this message"}
+                          title={editMessageId === message.id ? undefined : "Tap or hold to react"}
+                          className={cn(
+                          "relative max-w-[min(88%,560px)] rounded-2xl px-4 py-3 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                           message.systemMessage
                             ? "w-full border border-emerald-200/80 bg-white/85 text-foreground shadow-[0_8px_30px_rgba(25,80,54,0.08)]"
                             : mine
@@ -1017,14 +1081,15 @@ export function ResidentMessenger({
                                 autoFocus
                                 value={editMessageText}
                                 onChange={(event) => setEditMessageText(event.target.value)}
+                                onClick={(event) => event.stopPropagation()}
                                 maxLength={2000}
                                 rows={3}
                                 aria-label="Edit message"
                                 className="w-full resize-y rounded-xl border border-border/70 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
                               />
                               <div className="flex justify-end gap-2">
-                                <Button size="sm" variant="outline" onClick={() => setEditMessageId(null)}>Cancel</Button>
-                                <Button size="sm" disabled={!editMessageText.trim() || working} onClick={() => void saveDirectMessage(message.id)}>Save</Button>
+                                <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); setEditMessageId(null); }}>Cancel</Button>
+                                <Button size="sm" disabled={!editMessageText.trim() || working} onClick={(event) => { event.stopPropagation(); void saveDirectMessage(message.id); }}>Save</Button>
                               </div>
                             </div>
                           ) : (
@@ -1043,7 +1108,7 @@ export function ResidentMessenger({
                                   type="button"
                                   aria-label="Edit message"
                                   title="Edit message"
-                                  onClick={() => { setEditMessageId(message.id); setEditMessageText(message.content); }}
+                                  onClick={(event) => { event.stopPropagation(); setEditMessageId(message.id); setEditMessageText(message.content); }}
                                   className="rounded p-1 transition hover:bg-white/15"
                                 >
                                   <Pencil className="h-3 w-3" />
@@ -1052,7 +1117,7 @@ export function ResidentMessenger({
                                   type="button"
                                   aria-label="Delete message"
                                   title="Delete message"
-                                  onClick={() => void deleteDirectMessage(message.id)}
+                                  onClick={(event) => { event.stopPropagation(); void deleteDirectMessage(message.id); }}
                                   className="rounded p-1 transition hover:bg-white/15"
                                 >
                                   <Trash2 className="h-3 w-3" />
@@ -1060,59 +1125,67 @@ export function ResidentMessenger({
                               </span>
                             )}
                           </div>
+                          <AnimatePresence>
+                            {reactionPickerId === message.id && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.82, y: 8 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.88, y: 5 }}
+                                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                                onClick={(event) => event.stopPropagation()}
+                                className={cn(
+                                  "absolute -top-[3.65rem] z-20 flex gap-1 rounded-2xl border border-border/70 bg-white/95 p-1.5 shadow-[0_12px_34px_rgba(20,45,36,0.2)] backdrop-blur",
+                                  mine ? "right-2" : "left-2",
+                                  message.systemMessage && "left-1/2 -translate-x-1/2",
+                                )}
+                              >
+                                {REACTIONS.map((reaction) => {
+                                  const selected = message.reactions.some(
+                                    (item) => item.kind === reaction.kind && item.userId === residentId,
+                                  );
+                                  return (
+                                    <button
+                                      key={reaction.kind}
+                                      type="button"
+                                      aria-label={`${selected ? "Remove" : "React with"} ${reaction.label}`}
+                                      title={reaction.label}
+                                      onClick={() => {
+                                        setReactionPickerId(null);
+                                        void toggleMessageReaction(message.id, reaction.kind);
+                                      }}
+                                      className={cn(
+                                        "flex h-10 w-10 items-center justify-center rounded-xl text-xl transition duration-150 hover:-translate-y-1 hover:scale-110 hover:bg-primary/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                                        selected && "bg-primary/10 ring-1 ring-primary/30",
+                                      )}
+                                    >
+                                      {reaction.emoji}
+                                    </button>
+                                  );
+                                })}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                         <div className={cn(
                           "mt-1.5 flex max-w-[min(88%,560px)] flex-wrap items-center gap-1.5",
                           message.systemMessage ? "justify-center" : mine ? "justify-end" : "justify-start",
                         )}>
                           {reactionCounts.map((reaction) => (
-                            <button
+                            <span
                               key={reaction.kind}
-                              type="button"
                               aria-label={`${reaction.label}, ${reaction.count} reactions${reaction.selected ? ", selected by you" : ""}`}
-                              title={`${reaction.label}${reaction.selected ? " · click to remove" : ""}`}
-                              onClick={() => void toggleMessageReaction(message.id, reaction.kind)}
+                              title={reaction.label}
                               className={cn(
-                                "inline-flex h-7 items-center gap-1 rounded-full border px-2 text-xs shadow-sm transition hover:-translate-y-0.5",
+                                "inline-flex h-7 items-center gap-1 rounded-full border px-2 text-xs shadow-sm",
                                 reaction.selected
                                   ? "border-primary/40 bg-primary/10 text-primary"
-                                  : "border-white/80 bg-white/90 text-foreground hover:border-primary/30",
+                                  : "border-white/80 bg-white/90 text-foreground",
                               )}
                             >
                               <span aria-hidden="true">{reaction.emoji}</span>
                               <span className="font-semibold">{reaction.count}</span>
-                            </button>
+                            </span>
                           ))}
-                          <div className="relative">
-                            <button
-                              type="button"
-                              aria-label="Add a reaction"
-                              aria-expanded={reactionPickerId === message.id}
-                              onClick={() => setReactionPickerId((current) => current === message.id ? null : message.id)}
-                              className="inline-flex h-7 items-center gap-1 rounded-full border border-white/80 bg-white/75 px-2 text-[11px] font-medium text-muted-foreground shadow-sm transition hover:border-primary/30 hover:text-primary"
-                            >
-                              <span aria-hidden="true">☺</span> React
-                            </button>
-                            {reactionPickerId === message.id && (
-                              <div className="absolute bottom-9 left-0 z-10 flex gap-1 rounded-2xl border border-border/70 bg-white p-1.5 shadow-xl">
-                                {REACTIONS.map((reaction) => (
-                                  <button
-                                    key={reaction.kind}
-                                    type="button"
-                                    aria-label={reaction.label}
-                                    title={reaction.label}
-                                    onClick={() => {
-                                      setReactionPickerId(null);
-                                      void toggleMessageReaction(message.id, reaction.kind);
-                                    }}
-                                    className="flex h-10 w-10 items-center justify-center rounded-xl text-xl transition hover:scale-110 hover:bg-primary/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                                  >
-                                    {reaction.emoji}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
                         </div>
                       </div>
                     );
@@ -1155,20 +1228,17 @@ export function ResidentMessenger({
 
 export function ResidentMessagingHub({
   residentName,
-  residentImage,
   residentId,
 }: {
   residentName: string;
-  residentImage: string | null;
   residentId: string;
 }) {
   const [showPickupMessages, setShowPickupMessages] = useState(false);
 
   if (showPickupMessages) {
     return (
-      <main className="min-h-screen bg-[var(--background)] px-3 py-4 text-[var(--foreground)] sm:px-5 sm:py-6">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-white/90 p-4 shadow-sm">
+      <main className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+          <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-white/90 px-4 py-3 sm:px-6">
             <div>
               <h1 className="font-semibold">Pickup support messages</h1>
               <p className="text-xs text-muted-foreground">Updates and conversations about your collection requests.</p>
@@ -1177,9 +1247,10 @@ export function ResidentMessagingHub({
               <MessageCircle className="h-4 w-4" />
               Friend messages
             </Button>
-          </div>
-          <PickupMessenger userId={residentId} />
-        </div>
+          </header>
+          <section className="min-h-0 flex-1">
+            <PickupMessenger userId={residentId} role="RESIDENT" fullScreen />
+          </section>
       </main>
     );
   }
@@ -1187,7 +1258,6 @@ export function ResidentMessagingHub({
   return (
     <ResidentMessenger
       residentName={residentName}
-      residentImage={residentImage}
       residentId={residentId}
       onPickupMessages={() => setShowPickupMessages(true)}
     />

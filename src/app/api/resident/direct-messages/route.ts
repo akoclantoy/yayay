@@ -329,26 +329,34 @@ export async function PATCH(request: Request) {
       if (!reaction) {
         return NextResponse.json({ error: "Reaction is required" }, { status: 400 });
       }
-      const existingReaction = await db.directMessageReaction.findUnique({
-        where: {
-          messageId_userId_kind: {
-            messageId: message.id,
-            userId,
-            kind: reaction,
+      const reactions = await db.$transaction(async (tx) => {
+        const current = await tx.directMessageReaction.findUnique({
+          where: {
+            messageId_userId: {
+              messageId: message.id,
+              userId,
+            },
           },
-        },
-        select: { id: true },
-      });
-      if (existingReaction) {
-        await db.directMessageReaction.delete({ where: { id: existingReaction.id } });
-      } else {
-        await db.directMessageReaction.create({
-          data: { messageId: message.id, userId, kind: reaction },
+          select: { id: true, kind: true },
         });
-      }
-      const reactions = await db.directMessageReaction.findMany({
-        where: { messageId: message.id },
-        select: { userId: true, kind: true },
+        if (current?.kind === reaction) {
+          await tx.directMessageReaction.delete({ where: { id: current.id } });
+        } else {
+          await tx.directMessageReaction.upsert({
+            where: {
+              messageId_userId: {
+                messageId: message.id,
+                userId,
+              },
+            },
+            create: { messageId: message.id, userId, kind: reaction },
+            update: { kind: reaction },
+          });
+        }
+        return tx.directMessageReaction.findMany({
+          where: { messageId: message.id },
+          select: { userId: true, kind: true },
+        });
       });
       return NextResponse.json({ success: true, reactions });
     }

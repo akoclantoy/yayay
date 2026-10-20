@@ -9,5 +9,5 @@ export default async function StaffMessagesPage() {
     redirect("/resident");
   }
 
-  return <PickupMessenger userId={session.user.id} />;
+  return <PickupMessenger userId={session.user.id} role={session.user.role} />;
 }

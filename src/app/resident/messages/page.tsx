@@ -12,7 +12,6 @@ export default async function ResidentMessagesPage() {
   return (
     <ResidentMessagingHub
       residentName={session.user.name ?? "Resident"}
-      residentImage={session.user.image ?? null}
       residentId={session.user.id}
     />
   );
