@@ -139,7 +139,7 @@ export async function PATCH(request: Request) {
 
     const existing = await db.pickupRequest.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, assignedStaffId: true },
+      select: { id: true, userId: true, assignedStaffId: true, status: true },
     });
     if (!existing) {
       return NextResponse.json({ error: "Pickup not found" }, { status: 404 });
@@ -177,6 +177,7 @@ export async function PATCH(request: Request) {
           ? existing.assignedStaffId
           : assignedStaffId
         : existing.assignedStaffId ?? authResult.session.user.id;
+    const updatedAt = new Date();
 
     const pickup = await db.$transaction(async (tx) => {
       const pickup = await tx.pickupRequest.update({
@@ -184,19 +185,51 @@ export async function PATCH(request: Request) {
         data: {
           status,
           assignedStaffId: nextStaffId,
-          collectedAt: status === "COLLECTED" || status === "COMPLETED" ? new Date() : undefined,
+          collectedAt: status === "COLLECTED" || status === "COMPLETED" ? updatedAt : undefined,
         },
-        include: { user: { select: { id: true, name: true } } },
+        include: {
+          user: { select: { id: true, name: true } },
+          assignedStaff: { select: { name: true } },
+        },
       });
-      await tx.conversation.updateMany({
+      const conversation = await tx.conversation.upsert({
         where: { pickupId: id },
-        data: { staffId: nextStaffId },
+        create: { pickupId: id, residentId: pickup.userId, staffId: nextStaffId },
+        update: { staffId: nextStaffId },
+      });
+      const previousStatus = existing.status.toLowerCase().replace("_", " ");
+      const nextStatus = pickup.status.toLowerCase().replace("_", " ");
+      const assignment =
+        existing.assignedStaffId === nextStaffId
+          ? pickup.assignedStaff?.name ?? "Unassigned"
+          : nextStaffId === authResult.session.user.id
+            ? `${authResult.session.user.name?.trim() || "Staff member"} (assigned to me)`
+            : pickup.assignedStaff?.name ?? "Unassigned";
+      const updateDescription = [
+        "Pickup request update",
+        `Resident: ${pickup.user.name?.trim() || "EcoRewards resident"}`,
+        `Request reference: ${pickup.id}`,
+        `Address: ${pickup.address}`,
+        `Scheduled pickup: ${pickup.scheduledDate?.toISOString() ?? "Not scheduled"}`,
+        `Waste details: ${pickup.wasteNotes?.trim() || "Not provided"}`,
+        `Status: ${previousStatus} → ${nextStatus}`,
+        `Assigned staff: ${assignment}`,
+        `Updated by: ${authResult.session.user.name?.trim() || authResult.session.user.role}`,
+        `Updated: ${updatedAt.toISOString()}`,
+      ].join("\n");
+      await tx.conversationMessage.create({
+        data: {
+          conversationId: conversation.id,
+          senderId: authResult.session.user.id,
+          content: updateDescription,
+          systemMessage: true,
+        },
       });
       await tx.notification.create({
         data: {
           userId: pickup.userId,
-          title: "Pickup update",
-          message: `Your pickup request is now ${status.toLowerCase().replace("_", " ")}.`,
+          title: "Pickup request updated",
+          message: `Your pickup request is now ${nextStatus}. ${assignment !== "Unassigned" ? `Assigned staff: ${assignment}.` : ""}`,
           type: "pickup",
           link: "/resident/pickup",
         },

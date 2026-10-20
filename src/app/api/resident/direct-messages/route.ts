@@ -16,8 +16,28 @@ const messageSchema = z.object({
 const actionSchema = z.object({
   conversationId: z.string().min(1).optional(),
   friendId: z.string().min(1).optional(),
-  action: z.enum(["read", "delete", "unfriend", "block"]),
-}).refine((value) => value.conversationId || value.friendId);
+  messageId: z.string().min(1).optional(),
+  content: z.string().trim().min(1).max(2000).optional(),
+  reaction: z.enum(["LIKE", "HEART", "FUNNY", "ANGRY"]).optional(),
+  action: z.enum([
+    "read",
+    "delete",
+    "unfriend",
+    "block",
+    "edit_message",
+    "delete_message",
+    "react",
+  ]),
+}).refine((value) => {
+  if (["edit_message", "delete_message", "react"].includes(value.action)) {
+    return Boolean(
+      value.messageId &&
+      (value.action !== "edit_message" || value.content) &&
+      (value.action !== "react" || value.reaction),
+    );
+  }
+  return Boolean(value.conversationId || value.friendId);
+});
 
 async function isFriend(firstId: string, secondId: string) {
   const pair = canonicalFriendshipPair(firstId, secondId);
@@ -62,7 +82,10 @@ export async function GET(request: Request) {
               id: true,
               senderId: true,
               content: true,
+              systemMessage: true,
+              editedAt: true,
               createdAt: true,
+              reactions: { select: { userId: true, kind: true } },
             },
           },
         },
@@ -132,7 +155,12 @@ export async function GET(request: Request) {
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { content: true, createdAt: true, senderId: true },
+          select: {
+            content: true,
+            createdAt: true,
+            senderId: true,
+            systemMessage: true,
+          },
         },
       },
       orderBy: { updatedAt: "desc" },
@@ -199,7 +227,129 @@ export async function PATCH(request: Request) {
   const userId = authResult.session.user.id;
 
   try {
-    const { conversationId, friendId: requestedFriendId, action } = actionSchema.parse(await request.json());
+    const {
+      conversationId,
+      friendId: requestedFriendId,
+      messageId,
+      content,
+      reaction,
+      action,
+    } = actionSchema.parse(await request.json());
+
+    if (["edit_message", "delete_message", "react"].includes(action)) {
+      if (!messageId) {
+        return NextResponse.json({ error: "Message is required" }, { status: 400 });
+      }
+      const message = await db.directMessage.findFirst({
+        where: {
+          id: messageId,
+          deletedAt: null,
+          conversation: {
+            OR: [
+              { participantLowId: userId, hiddenAtLow: null },
+              { participantHighId: userId, hiddenAtHigh: null },
+            ],
+          },
+        },
+        select: {
+          id: true,
+          senderId: true,
+          systemMessage: true,
+          conversation: {
+            select: {
+              id: true,
+              participantLowId: true,
+              participantHighId: true,
+            },
+          },
+        },
+      });
+      if (!message) return NextResponse.json({ error: "Message not found" }, { status: 404 });
+      const friendId = message.conversation.participantLowId === userId
+        ? message.conversation.participantHighId
+        : message.conversation.participantLowId;
+      if (!(await isFriend(userId, friendId))) {
+        return NextResponse.json({ error: "Messaging is available to friends only" }, { status: 403 });
+      }
+      const block = await db.residentBlock.findFirst({
+        where: {
+          OR: [
+            { blockerId: userId, blockedId: friendId },
+            { blockerId: friendId, blockedId: userId },
+          ],
+        },
+        select: { id: true },
+      });
+      if (block) return NextResponse.json({ error: "Conversation is unavailable" }, { status: 404 });
+
+      if (action === "edit_message" || action === "delete_message") {
+        if (message.senderId !== userId || message.systemMessage) {
+          return NextResponse.json({ error: "Only your own messages can be changed" }, { status: 403 });
+        }
+        if (action === "edit_message") {
+          if (!content) return NextResponse.json({ error: "Message content is required" }, { status: 400 });
+          const updated = await db.$transaction(async (tx) => {
+            const updatedMessage = await tx.directMessage.update({
+              where: { id: message.id },
+              data: { content, editedAt: new Date() },
+              select: {
+                id: true,
+                senderId: true,
+                content: true,
+                systemMessage: true,
+                editedAt: true,
+                createdAt: true,
+                reactions: { select: { userId: true, kind: true } },
+              },
+            });
+            await tx.directConversation.update({
+              where: { id: message.conversation.id },
+              data: { updatedAt: new Date() },
+            });
+            return updatedMessage;
+          });
+          return NextResponse.json(updated);
+        }
+        await db.$transaction(async (tx) => {
+          await tx.directMessage.update({
+            where: { id: message.id },
+            data: { deletedAt: new Date() },
+          });
+          await tx.directConversation.update({
+            where: { id: message.conversation.id },
+            data: { updatedAt: new Date() },
+          });
+        });
+        return NextResponse.json({ success: true });
+      }
+
+      if (!reaction) {
+        return NextResponse.json({ error: "Reaction is required" }, { status: 400 });
+      }
+      const existingReaction = await db.directMessageReaction.findUnique({
+        where: {
+          messageId_userId_kind: {
+            messageId: message.id,
+            userId,
+            kind: reaction,
+          },
+        },
+        select: { id: true },
+      });
+      if (existingReaction) {
+        await db.directMessageReaction.delete({ where: { id: existingReaction.id } });
+      } else {
+        await db.directMessageReaction.create({
+          data: { messageId: message.id, userId, kind: reaction },
+        });
+      }
+      const reactions = await db.directMessageReaction.findMany({
+        where: { messageId: message.id },
+        select: { userId: true, kind: true },
+      });
+      return NextResponse.json({ success: true, reactions });
+    }
+
     const conversation = conversationId
       ? await db.directConversation.findFirst({
           where: {

@@ -11,6 +11,7 @@ import {
   MessageCircle,
   MoreHorizontal,
   Ban,
+  Pencil,
   Trash2,
   UserRoundX,
   Recycle,
@@ -39,13 +40,28 @@ type DirectoryResident = Resident & {
   mutualCount: number;
 };
 type FriendRequest = { id: string; resident: Resident; createdAt: string };
-type Message = { id: string; senderId: string; content: string; createdAt: string };
+type ReactionKind = "LIKE" | "HEART" | "FUNNY" | "ANGRY";
+type Reaction = { userId: string; kind: ReactionKind };
+type Message = {
+  id: string;
+  senderId: string;
+  content: string;
+  systemMessage: boolean;
+  editedAt: string | null;
+  createdAt: string;
+  reactions: Reaction[];
+};
 type Conversation = {
   id: string | null;
   theme: string;
   backgroundImageUrl: string | null;
   friend: Resident;
-  lastMessage: { content: string; createdAt: string; senderId: string } | null;
+  lastMessage: {
+    content: string;
+    createdAt: string;
+    senderId: string;
+    systemMessage: boolean;
+  } | null;
   unread: boolean;
 };
 type FriendProfile = Resident & {
@@ -83,6 +99,13 @@ const dateFormatter = new Intl.DateTimeFormat("en-PH", {
   minute: "2-digit",
   timeZone: "Asia/Manila",
 });
+
+const REACTIONS: { kind: ReactionKind; emoji: string; label: string }[] = [
+  { kind: "LIKE", emoji: "👍", label: "Like" },
+  { kind: "HEART", emoji: "❤️", label: "Heart" },
+  { kind: "FUNNY", emoji: "😂", label: "Funny" },
+  { kind: "ANGRY", emoji: "😡", label: "Angry" },
+];
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init });
@@ -129,6 +152,9 @@ export function ResidentMessenger({
   const [details, setDetails] = useState<ConversationDetails | null>(null);
   const [search, setSearch] = useState("");
   const [messageText, setMessageText] = useState("");
+  const [editMessageId, setEditMessageId] = useState<string | null>(null);
+  const [editMessageText, setEditMessageText] = useState("");
+  const [reactionPickerId, setReactionPickerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -514,6 +540,78 @@ export function ResidentMessenger({
     }
   }
 
+  async function saveDirectMessage(messageId: string) {
+    setWorking(true);
+    setError(null);
+    try {
+      const updated = await requestJson<Message>("/api/resident/direct-messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "edit_message",
+          messageId,
+          content: editMessageText,
+        }),
+      });
+      setDetails((current) => current
+        ? {
+            ...current,
+            messages: current.messages.map((message) => message.id === messageId ? updated : message),
+          }
+        : current);
+      setEditMessageId(null);
+      setEditMessageText("");
+      await refresh();
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function deleteDirectMessage(messageId: string) {
+    if (!window.confirm("Delete this message for everyone in the conversation?")) return;
+    setWorking(true);
+    setError(null);
+    try {
+      await requestJson("/api/resident/direct-messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete_message", messageId }),
+      });
+      setDetails((current) => current
+        ? { ...current, messages: current.messages.filter((message) => message.id !== messageId) }
+        : current);
+      await refresh();
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function toggleMessageReaction(messageId: string, kind: ReactionKind) {
+    setError(null);
+    try {
+      const result = await requestJson<{ reactions: Reaction[] }>("/api/resident/direct-messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "react", messageId, reaction: kind }),
+      });
+      setDetails((current) => current
+        ? {
+            ...current,
+            messages: current.messages.map((message) =>
+              message.id === messageId ? { ...message, reactions: result.reactions } : message,
+            ),
+          }
+        : current);
+      await refresh();
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    }
+  }
+
   async function loadTransferBalance() {
     try {
       const response = await requestJson<{ balance: number }>("/api/resident/points-transfer");
@@ -537,7 +635,7 @@ export function ResidentMessenger({
     setWorking(true);
     setError(null);
     try {
-      const result = await requestJson<{ balance: number }>("/api/resident/points-transfer", {
+      const result = await requestJson<{ balance: number; conversationId: string }>("/api/resident/points-transfer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ recipientQrCode: profile.qrCode, amount }),
@@ -546,7 +644,13 @@ export function ResidentMessenger({
       setTransferAmount("");
       setTransferMode(false);
       setNotice(`${amount.toLocaleString("en-US")} points sent to ${displayName(profile)}.`);
+      setActiveFriendId(profile.id);
+      setActiveConversationId(result.conversationId);
+      setDetails(null);
+      setTab("inbox");
       setProfile(null);
+      await refresh();
+      await loadDetails(result.conversationId);
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
@@ -856,7 +960,140 @@ export function ResidentMessenger({
                   <div className="mx-auto mb-5 max-w-sm text-center"><span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm"><MessageCircle className="h-3 w-3" />Your EcoRewards connection</span><p className="mt-2 text-xs text-muted-foreground">Messages are private between friends.</p></div>
                   {currentDetails?.messages.map((message) => {
                     const mine = message.senderId === residentId;
-                    return <div key={message.id} className={cn("mb-3 flex w-full", mine ? "justify-end" : "justify-start")}><div className={cn("max-w-[min(82%,520px)] rounded-2xl px-4 py-2.5 shadow-sm", mine ? "rounded-br-md bg-primary text-white" : "rounded-bl-md border border-white/70 bg-white/90 text-foreground")}><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.content}</p><div className={cn("mt-1 flex items-center justify-end gap-1 text-[10px]", mine ? "text-white/70" : "text-muted-foreground")}>{dateFormatter.format(new Date(message.createdAt))}{mine && <CheckCheck className="h-3 w-3" />}</div></div></div>;
+                    const reactionCounts = REACTIONS.map((reaction) => ({
+                      ...reaction,
+                      count: message.reactions.filter((item) => item.kind === reaction.kind).length,
+                      selected: message.reactions.some(
+                        (item) => item.kind === reaction.kind && item.userId === residentId,
+                      ),
+                    })).filter((reaction) => reaction.count > 0);
+                    return (
+                      <div
+                        key={message.id}
+                        className={cn(
+                          "group mb-4 flex w-full flex-col",
+                          message.systemMessage ? "items-center" : mine ? "items-end" : "items-start",
+                        )}
+                      >
+                        <div className={cn(
+                          "relative max-w-[min(88%,560px)] rounded-2xl px-4 py-3 shadow-sm",
+                          message.systemMessage
+                            ? "w-full border border-emerald-200/80 bg-white/85 text-foreground shadow-[0_8px_30px_rgba(25,80,54,0.08)]"
+                            : mine
+                              ? "rounded-br-md bg-primary text-white"
+                              : "rounded-bl-md border border-white/70 bg-white/90 text-foreground",
+                        )}>
+                          {message.systemMessage && (
+                            <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-800">
+                              <Wallet className="h-3.5 w-3.5" />
+                              Points transfer receipt
+                            </div>
+                          )}
+                          {editMessageId === message.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                autoFocus
+                                value={editMessageText}
+                                onChange={(event) => setEditMessageText(event.target.value)}
+                                maxLength={2000}
+                                rows={3}
+                                aria-label="Edit message"
+                                className="w-full resize-y rounded-xl border border-border/70 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+                              />
+                              <div className="flex justify-end gap-2">
+                                <Button size="sm" variant="outline" onClick={() => setEditMessageId(null)}>Cancel</Button>
+                                <Button size="sm" disabled={!editMessageText.trim() || working} onClick={() => void saveDirectMessage(message.id)}>Save</Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.content}</p>
+                          )}
+                          <div className={cn(
+                            "mt-2 flex items-center justify-end gap-1 text-[10px]",
+                            message.systemMessage || !mine ? "text-muted-foreground" : "text-white/70",
+                          )}>
+                            {message.editedAt && <span className="mr-1">edited ·</span>}
+                            {dateFormatter.format(new Date(message.createdAt))}
+                            {mine && !message.systemMessage && <CheckCheck className="ml-0.5 h-3 w-3" />}
+                            {mine && !message.systemMessage && editMessageId !== message.id && (
+                              <span className="ml-2 flex gap-1">
+                                <button
+                                  type="button"
+                                  aria-label="Edit message"
+                                  title="Edit message"
+                                  onClick={() => { setEditMessageId(message.id); setEditMessageText(message.content); }}
+                                  className="rounded p-1 transition hover:bg-white/15"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="Delete message"
+                                  title="Delete message"
+                                  onClick={() => void deleteDirectMessage(message.id)}
+                                  className="rounded p-1 transition hover:bg-white/15"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className={cn(
+                          "mt-1.5 flex max-w-[min(88%,560px)] flex-wrap items-center gap-1.5",
+                          message.systemMessage ? "justify-center" : mine ? "justify-end" : "justify-start",
+                        )}>
+                          {reactionCounts.map((reaction) => (
+                            <button
+                              key={reaction.kind}
+                              type="button"
+                              aria-label={`${reaction.label}, ${reaction.count} reactions${reaction.selected ? ", selected by you" : ""}`}
+                              title={`${reaction.label}${reaction.selected ? " · click to remove" : ""}`}
+                              onClick={() => void toggleMessageReaction(message.id, reaction.kind)}
+                              className={cn(
+                                "inline-flex h-7 items-center gap-1 rounded-full border px-2 text-xs shadow-sm transition hover:-translate-y-0.5",
+                                reaction.selected
+                                  ? "border-primary/40 bg-primary/10 text-primary"
+                                  : "border-white/80 bg-white/90 text-foreground hover:border-primary/30",
+                              )}
+                            >
+                              <span aria-hidden="true">{reaction.emoji}</span>
+                              <span className="font-semibold">{reaction.count}</span>
+                            </button>
+                          ))}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              aria-label="Add a reaction"
+                              aria-expanded={reactionPickerId === message.id}
+                              onClick={() => setReactionPickerId((current) => current === message.id ? null : message.id)}
+                              className="inline-flex h-7 items-center gap-1 rounded-full border border-white/80 bg-white/75 px-2 text-[11px] font-medium text-muted-foreground shadow-sm transition hover:border-primary/30 hover:text-primary"
+                            >
+                              <span aria-hidden="true">☺</span> React
+                            </button>
+                            {reactionPickerId === message.id && (
+                              <div className="absolute bottom-9 left-0 z-10 flex gap-1 rounded-2xl border border-border/70 bg-white p-1.5 shadow-xl">
+                                {REACTIONS.map((reaction) => (
+                                  <button
+                                    key={reaction.kind}
+                                    type="button"
+                                    aria-label={reaction.label}
+                                    title={reaction.label}
+                                    onClick={() => {
+                                      setReactionPickerId(null);
+                                      void toggleMessageReaction(message.id, reaction.kind);
+                                    }}
+                                    className="flex h-10 w-10 items-center justify-center rounded-xl text-xl transition hover:scale-110 hover:bg-primary/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                  >
+                                    {reaction.emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
                   })}
                   {activeConversationId && !currentDetails && <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading conversation…</div>}
                   {!activeConversationId && <div className="flex flex-1 flex-col items-center justify-center text-center"><div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white/80 text-primary shadow-sm"><MessageCircle className="h-7 w-7" /></div><p className="font-semibold">Start a conversation</p><p className="mt-1 max-w-xs text-sm text-muted-foreground">Send a friendly message to {displayName(activeFriend)}.</p></div>}

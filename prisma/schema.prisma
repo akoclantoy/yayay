@@ -67,6 +67,13 @@ enum FriendRequestStatus {
   CANCELLED
 }
 
+enum DirectMessageReactionKind {
+  LIKE
+  HEART
+  FUNNY
+  ANGRY
+}
+
 enum NotificationChannel {
   IN_APP
   EMAIL
@@ -123,6 +130,7 @@ model User {
   directConversationsLow  DirectConversation[]      @relation("DirectConversationLow")
   directConversationsHigh DirectConversation[]      @relation("DirectConversationHigh")
   directMessages          DirectMessage[]
+  directMessageReactions  DirectMessageReaction[]
   sentPointTransfers      PointTransfer[]           @relation("PointTransferSender")
   receivedPointTransfers  PointTransfer[]           @relation("PointTransferRecipient")
   blocksGiven             ResidentBlock[]           @relation("ResidentBlocker")
@@ -521,14 +529,32 @@ model DirectMessage {
   conversationId String
   senderId       String
   content        String   @db.Text
+  systemMessage  Boolean  @default(false)
+  editedAt       DateTime?
   createdAt      DateTime @default(now())
   deletedAt      DateTime?
 
   conversation DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User               @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  reactions    DirectMessageReaction[]
 
   @@index([conversationId, createdAt])
   @@index([senderId, createdAt])
+}
+
+model DirectMessageReaction {
+  id        String                    @id @default(cuid())
+  messageId String
+  userId    String
+  kind      DirectMessageReactionKind
+  createdAt DateTime                  @default(now())
+
+  message DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, kind])
+  @@index([messageId])
+  @@index([userId])
 }
 
 model PointTransfer {

@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
-import { canonicalFriendshipPair } from "@/lib/resident-social";
+import {
+  canonicalDirectConversationPair,
+  canonicalFriendshipPair,
+} from "@/lib/resident-social";
 
 const transferSchema = z.object({
   recipientQrCode: z.string().trim().min(1).max(200),
@@ -78,6 +81,35 @@ export async function POST(request: Request) {
       const pointTransfer = await tx.pointTransfer.create({
         data: { senderId, recipientId, amount },
       });
+      const conversationPair = canonicalDirectConversationPair(senderId, recipientId);
+      const conversation = await tx.directConversation.upsert({
+        where: {
+          participantLowId_participantHighId: conversationPair,
+        },
+        create: conversationPair,
+        update: { hiddenAtLow: null, hiddenAtHigh: null },
+      });
+      const senderName = authResult.session.user.name?.trim() || "EcoRewards resident";
+      const recipientName = recipientProfile.user.name?.trim() || "EcoRewards resident";
+      await tx.directMessage.create({
+        data: {
+          conversationId: conversation.id,
+          senderId,
+          systemMessage: true,
+          content: [
+            "Points transfer completed",
+            `From: ${senderName}`,
+            `To: ${recipientName}`,
+            `Amount: ${amount.toLocaleString("en-US")} points`,
+            `Completed: ${pointTransfer.createdAt.toISOString()}`,
+            `Transfer reference: ${pointTransfer.id}`,
+          ].join("\n"),
+        },
+      });
+      await tx.directConversation.update({
+        where: { id: conversation.id },
+        data: { updatedAt: pointTransfer.createdAt },
+      });
       await tx.rewardTransaction.createMany({
         data: [
           {
@@ -104,12 +136,16 @@ export async function POST(request: Request) {
         data: {
           userId: recipientId,
           title: "Points received",
-          message: `You received ${amount.toLocaleString("en-US")} points.`,
+          message: `${senderName} sent you ${amount.toLocaleString("en-US")} points. Reference: ${pointTransfer.id}`,
           type: "points_transfer",
           link: "/resident/rewards",
         },
       });
-      return { id: pointTransfer.id, balance: updatedSender.balance };
+      return {
+        id: pointTransfer.id,
+        balance: updatedSender.balance,
+        conversationId: conversation.id,
+      };
     });
 
     return NextResponse.json({
@@ -117,6 +153,7 @@ export async function POST(request: Request) {
       transferId: transfer.id,
       amount,
       balance: transfer.balance,
+      conversationId: transfer.conversationId,
     }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
