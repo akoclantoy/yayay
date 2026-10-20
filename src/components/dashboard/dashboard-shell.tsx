@@ -30,15 +30,22 @@ import {
   X,
   ChevronLeft,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { APP_NAME, ROLE_LABELS } from "@/lib/constants";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { getInitials } from "@/lib/utils";
+import { FriendTogetherCelebration, type FriendTogetherProfile } from "@/components/messaging/friend-together-celebration";
 import type { UserRole } from "@/generated/prisma/enums";
 
 type NavItem = { href: string; label: string; icon: React.ElementType };
+type FriendTogetherNotification = {
+  id: string;
+  title: string;
+  link: string | null;
+  read: boolean;
+};
 
 const RESIDENT_NAV: NavItem[] = [
   { href: "/resident", label: "Dashboard", icon: LayoutDashboard },
@@ -107,6 +114,9 @@ export function DashboardShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [unreadByLink, setUnreadByLink] = useState<Record<string, number>>({});
+  const [friendTogether, setFriendTogether] = useState<FriendTogetherProfile | null>(null);
+  const processedFriendNotificationsRef = useRef(new Set<string>());
+  const friendCelebrationTimerRef = useRef<number | null>(null);
   const nav = NAV_BY_ROLE[role] ?? RESIDENT_NAV;
   const context = ROLE_CONTEXT[role] ?? ROLE_CONTEXT.RESIDENT;
   const activeItem = nav.find((item) => pathname === item.href || (item.href !== "/resident" && item.href !== "/staff" && item.href !== "/admin" && pathname.startsWith(item.href)));
@@ -125,6 +135,71 @@ export function DashboardShell({
     setUnreadByLink(activity as Record<string, number>);
   }, []);
 
+  const refreshFriendTogether = useCallback(async () => {
+    const notificationsResponse = await fetch("/api/notifications", { cache: "no-store" });
+    if (!notificationsResponse.ok) {
+      throw new Error("Could not load friend connection activity.");
+    }
+    const notifications = (await notificationsResponse.json()) as FriendTogetherNotification[];
+    const notification = notifications.find(
+      (item) =>
+        !item.read &&
+        item.title === "Your Friend Together" &&
+        !processedFriendNotificationsRef.current.has(item.id) &&
+        item.link,
+    );
+    if (!notification?.link) return;
+
+    const friendId = new URL(notification.link, window.location.origin).searchParams.get("friendId");
+    if (!friendId) return;
+    const friendsResponse = await fetch("/api/resident/friends", { cache: "no-store" });
+    if (!friendsResponse.ok) {
+      throw new Error("Could not load your new friend.");
+    }
+    const friendData = (await friendsResponse.json()) as {
+      friends: FriendTogetherProfile[];
+    };
+    const friend = friendData.friends.find((item) => item.id === friendId);
+    if (!friend || processedFriendNotificationsRef.current.has(notification.id)) return;
+
+    processedFriendNotificationsRef.current.add(notification.id);
+    setFriendTogether(friend);
+    if (friendCelebrationTimerRef.current !== null) {
+      window.clearTimeout(friendCelebrationTimerRef.current);
+    }
+    friendCelebrationTimerRef.current = window.setTimeout(() => {
+      setFriendTogether(null);
+      friendCelebrationTimerRef.current = null;
+    }, 3000);
+
+    const readResponse = await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: notification.id }),
+    });
+    if (!readResponse.ok) {
+      throw new Error("Could not mark the friend connection notification as viewed.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (role !== "RESIDENT" || !session?.user?.id) return;
+    const refresh = () => {
+      void refreshFriendTogether().catch((error: unknown) => {
+        console.error("[dashboard] Could not refresh friend connection activity:", error);
+      });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 8000);
+    return () => window.clearInterval(timer);
+  }, [refreshFriendTogether, role, session?.user?.id]);
+
+  useEffect(() => () => {
+    if (friendCelebrationTimerRef.current !== null) {
+      window.clearTimeout(friendCelebrationTimerRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     if (!session?.user?.id) return;
 
@@ -133,6 +208,11 @@ export function DashboardShell({
       void refreshUnreadActivity().catch((error: unknown) => {
         console.error("[dashboard] Could not refresh unread activity:", error);
       });
+      if (role === "RESIDENT") {
+        void refreshFriendTogether().catch((error: unknown) => {
+          console.error("[dashboard] Could not refresh friend connection activity:", error);
+        });
+      }
     };
     events.addEventListener("open", refresh);
     events.addEventListener("invalidate", refresh);
@@ -141,7 +221,7 @@ export function DashboardShell({
       events.removeEventListener("invalidate", refresh);
       events.close();
     };
-  }, [refreshUnreadActivity, session?.user?.id]);
+  }, [refreshFriendTogether, refreshUnreadActivity, role, session?.user?.id]);
 
   useEffect(() => {
     if (!session?.user?.id || !activeHref) return;
@@ -160,7 +240,19 @@ export function DashboardShell({
   }, [activeHref, refreshUnreadActivity, session?.user?.id]);
 
   if (role === "RESIDENT" && pathname === "/resident/messages") {
-    return <>{children}</>;
+    return (
+      <>
+        {children}
+        <FriendTogetherCelebration
+          resident={{
+            id: session?.user?.id ?? "",
+            name: session?.user?.name ?? "Resident",
+            image: session?.user?.image ?? null,
+          }}
+          friend={friendTogether}
+        />
+      </>
+    );
   }
 
   return (
@@ -186,6 +278,16 @@ export function DashboardShell({
             <Link href="/" className="flex items-center gap-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20">
                 <Recycle className="h-4 w-4" />
+                {role === "RESIDENT" && (
+                  <FriendTogetherCelebration
+                    resident={{
+                      id: session?.user?.id ?? "",
+                      name: session?.user?.name ?? "Resident",
+                      image: session?.user?.image ?? null,
+                    }}
+                    friend={friendTogether}
+                  />
+                )}
               </div>
               <div>
                 <span className="font-bold text-sm tracking-tight">{APP_NAME}</span>

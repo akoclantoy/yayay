@@ -29,6 +29,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { FriendTogetherCelebration } from "@/components/messaging/friend-together-celebration";
 import { PickupMessenger } from "@/components/messaging/pickup-messenger";
 import { cn } from "@/lib/utils";
 
@@ -172,7 +173,10 @@ export function ResidentMessenger({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsAction, setSettingsAction] = useState<"unfriend" | "block" | "delete" | null>(null);
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
+  const [friendCelebration, setFriendCelebration] = useState<Resident | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const celebrationTimerRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const suppressNextMessageClickRef = useRef(false);
 
@@ -180,6 +184,20 @@ export function ResidentMessenger({
     if (longPressTimerRef.current !== null) {
       window.clearTimeout(longPressTimerRef.current);
     }
+    if (celebrationTimerRef.current !== null) {
+      window.clearTimeout(celebrationTimerRef.current);
+    }
+  }, []);
+
+  const celebrateFriend = useCallback((friend: Resident) => {
+    setFriendCelebration(friend);
+    if (celebrationTimerRef.current !== null) {
+      window.clearTimeout(celebrationTimerRef.current);
+    }
+    celebrationTimerRef.current = window.setTimeout(() => {
+      setFriendCelebration(null);
+      celebrationTimerRef.current = null;
+    }, 3000);
   }, []);
 
   const activeFriend = useMemo(() => {
@@ -253,6 +271,7 @@ export function ResidentMessenger({
         },
       );
       await refresh();
+      if (result.connectedNow) celebrateFriend(result.friend);
       const conversationResponse = await requestJson<{ conversations: Conversation[] }>(
         "/api/resident/direct-messages",
       );
@@ -274,7 +293,7 @@ export function ResidentMessenger({
     } finally {
       setWorking(false);
     }
-  }, [refresh]);
+  }, [celebrateFriend, refresh]);
 
   useEffect(() => {
     let active = true;
@@ -308,6 +327,10 @@ export function ResidentMessenger({
       active = false;
     };
   }, [activeConversationId, refreshOpenConversation]);
+
+  useEffect(() => {
+    shouldAutoScrollRef.current = true;
+  }, [activeConversationId]);
 
   useEffect(() => {
     if (tab !== "directory") return;
@@ -379,7 +402,9 @@ export function ResidentMessenger({
   }, [activeConversationId, refresh, refreshOpenConversation]);
 
   useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (shouldAutoScrollRef.current) {
+      messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
   }, [details?.messages.length]);
 
   useEffect(() => {
@@ -1008,7 +1033,11 @@ export function ResidentMessenger({
 
                 {themeOpen && <div className="absolute right-4 top-[68px] z-20 w-[min(340px,calc(100%-2rem))] rounded-2xl border border-border bg-white p-4 shadow-xl sm:right-7"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Shared chat appearance</p><button type="button" onClick={() => setThemeOpen(false)} aria-label="Close appearance settings" className="text-muted-foreground"><X className="h-4 w-4" /></button></div><p className="mt-1 text-xs text-muted-foreground">Changes are visible to both friends.</p><div className="mt-3 grid grid-cols-5 gap-2">{Object.entries(THEMES).map(([key, theme]) => <button key={key} type="button" title={theme.label} onClick={() => void saveTheme(key)} className={cn("h-10 rounded-xl border-2 transition hover:scale-105", currentDetails?.theme === key ? "border-primary" : "border-white shadow")} style={{ background: theme.background }} />)}</div><label className="mt-4 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5 text-sm hover:border-primary/40"><ImagePlus className="h-4 w-4 text-primary" /><span className="min-w-0 flex-1 truncate">{backgroundFile?.name ?? "Upload background image"}</span><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => setBackgroundFile(event.target.files?.[0] ?? null)} /></label>{backgroundFile && <Button size="sm" className="mt-2 w-full" disabled={working} onClick={() => void saveTheme()}>{working ? "Saving..." : "Share background"}</Button>}</div>}
 
-                <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-8" style={{ background: currentTheme.background, ...(currentDetails?.backgroundImageUrl ? { backgroundImage: `linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,.72)), url("${currentDetails.backgroundImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" } : {}) }}>
+                <div onScroll={(event) => {
+                  const viewport = event.currentTarget;
+                  shouldAutoScrollRef.current =
+                    viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 120;
+                }} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-8" style={{ background: currentTheme.background, ...(currentDetails?.backgroundImageUrl ? { backgroundImage: `linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,.72)), url("${currentDetails.backgroundImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" } : {}) }}>
                   <div className="mx-auto mb-5 max-w-sm text-center"><span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm"><MessageCircle className="h-3 w-3" />Your EcoRewards connection</span><p className="mt-2 text-xs text-muted-foreground">Messages are private between friends.</p></div>
                   {currentDetails?.messages.map((message) => {
                     const mine = message.senderId === residentId;
@@ -1062,13 +1091,18 @@ export function ResidentMessenger({
                           aria-label={editMessageId === message.id ? undefined : "Press to react to this message"}
                           title={editMessageId === message.id ? undefined : "Tap or hold to react"}
                           className={cn(
-                          "relative max-w-[min(88%,560px)] rounded-2xl px-4 py-3 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-                          message.systemMessage
-                            ? "w-full border border-emerald-200/80 bg-white/85 text-foreground shadow-[0_8px_30px_rgba(25,80,54,0.08)]"
-                            : mine
-                              ? "rounded-br-md bg-primary text-white"
-                              : "rounded-bl-md border border-white/70 bg-white/90 text-foreground",
-                        )}>
+                            "relative rounded-2xl shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                            editMessageId === message.id
+                              ? "w-full max-w-[min(96%,760px)] border border-primary/20 bg-white p-4 text-foreground shadow-lg sm:p-5"
+                              : "max-w-[min(88%,560px)] px-4 py-3",
+                            editMessageId !== message.id && message.systemMessage
+                              ? "w-full border border-emerald-200/80 bg-white/85 text-foreground shadow-[0_8px_30px_rgba(25,80,54,0.08)]"
+                              : editMessageId !== message.id && mine
+                                ? "rounded-br-md bg-primary text-white"
+                                : editMessageId !== message.id && !message.systemMessage
+                                  ? "rounded-bl-md border border-white/70 bg-white/90 text-foreground"
+                                  : "",
+                          )}>
                           {message.systemMessage && (
                             <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-800">
                               <Wallet className="h-3.5 w-3.5" />
@@ -1076,20 +1110,35 @@ export function ResidentMessenger({
                             </div>
                           )}
                           {editMessageId === message.id ? (
-                            <div className="space-y-2">
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-xs font-semibold text-primary">Edit message</span>
+                                <span className="text-[11px] text-muted-foreground">{editMessageText.length}/2000</span>
+                              </div>
                               <textarea
                                 autoFocus
+                                ref={(element) => {
+                                  if (element) {
+                                    element.style.height = "auto";
+                                    element.style.height = `${element.scrollHeight}px`;
+                                  }
+                                }}
                                 value={editMessageText}
-                                onChange={(event) => setEditMessageText(event.target.value)}
+                                onChange={(event) => {
+                                  const textarea = event.currentTarget;
+                                  setEditMessageText(textarea.value);
+                                  textarea.style.height = "auto";
+                                  textarea.style.height = `${textarea.scrollHeight}px`;
+                                }}
                                 onClick={(event) => event.stopPropagation()}
                                 maxLength={2000}
-                                rows={3}
+                                rows={6}
                                 aria-label="Edit message"
-                                className="w-full resize-y rounded-xl border border-border/70 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+                                className="min-h-36 w-full resize-y overflow-hidden whitespace-pre-wrap break-words rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm leading-6 text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
                               />
-                              <div className="flex justify-end gap-2">
-                                <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); setEditMessageId(null); }}>Cancel</Button>
-                                <Button size="sm" disabled={!editMessageText.trim() || working} onClick={(event) => { event.stopPropagation(); void saveDirectMessage(message.id); }}>Save</Button>
+                              <div className="flex justify-end gap-2 border-t border-border/60 pt-3">
+                                <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); setEditMessageId(null); setEditMessageText(""); }}>Cancel</Button>
+                                <Button size="sm" disabled={!editMessageText.trim() || working} onClick={(event) => { event.stopPropagation(); void saveDirectMessage(message.id); }}>{working ? "Saving..." : "Save changes"}</Button>
                               </div>
                             </div>
                           ) : (
@@ -1212,6 +1261,15 @@ export function ResidentMessenger({
           </section>
         </div>
       </section>
+
+      <FriendTogetherCelebration
+        resident={{
+          id: residentId,
+          name: data?.ownProfile?.user.name ?? residentName,
+          image: data?.ownProfile?.user.image ?? null,
+        }}
+        friend={friendCelebration}
+      />
 
       {(error || notice) && <div role={error ? "alert" : "status"} className={cn("fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 text-sm shadow-xl", error ? "bg-danger text-white" : "bg-primary text-white")}><span>{error ?? notice}</span><button type="button" aria-label="Dismiss notification" onClick={() => { setError(null); setNotice(null); }}><X className="h-4 w-4" /></button></div>}
 

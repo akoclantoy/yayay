@@ -378,10 +378,10 @@ export async function POST(request: Request) {
         await tx.notification.create({
           data: {
             userId: target.userId,
-            title: "New EcoRewards friend",
-            message: `${authResult.session.user.name ?? "A resident"} connected with you by QR code.`,
+            title: "Your Friend Together",
+            message: `You and ${authResult.session.user.name ?? "a resident"} connected by QR code. Say hello in your messages!`,
             type: "friend_request",
-            link: "/resident/messages",
+            link: `/resident/messages?friendId=${encodeURIComponent(userId)}`,
           },
         });
       });
