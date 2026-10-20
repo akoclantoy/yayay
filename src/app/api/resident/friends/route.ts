@@ -89,6 +89,7 @@ export async function GET(request: Request) {
           id: profile.user.id,
           name: profile.user.name,
           image: profile.user.image,
+          qrCode: profile.qrCode,
           isFriend: Boolean(friendship),
           outgoingRequest: outgoingRequest?.status === "PENDING" ? outgoingRequest.id : null,
           incomingRequest: incomingRequest?.status === "PENDING" ? incomingRequest.id : null,
