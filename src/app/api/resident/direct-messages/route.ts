@@ -350,7 +350,7 @@ export async function PATCH(request: Request) {
               },
             },
             create: { messageId: message.id, userId, kind: reaction },
-            update: { kind: reaction },
+            update: { kind: reaction, createdAt: new Date() },
           });
         }
         return tx.directMessageReaction.findMany({

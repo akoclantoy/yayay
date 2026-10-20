@@ -60,7 +60,38 @@ const schemaClient = new pg.Client({
 try {
   await schemaClient.connect();
   await schemaClient.query("CREATE SCHEMA IF NOT EXISTS ecorewards");
+  await schemaClient.query("BEGIN");
+  const reactionTable = await schemaClient.query(
+    `SELECT to_regclass('ecorewards."DirectMessageReaction"') IS NOT NULL AS table_exists`
+  );
+  if (reactionTable.rows[0].table_exists) {
+    const deduplicated = await schemaClient.query(`
+      DELETE FROM ecorewards."DirectMessageReaction" AS older
+      USING ecorewards."DirectMessageReaction" AS newer
+      WHERE older."messageId" = newer."messageId"
+        AND older."userId" = newer."userId"
+        AND (
+          older."createdAt" < newer."createdAt"
+          OR (older."createdAt" = newer."createdAt" AND older."id" < newer."id")
+        )
+    `);
+    if (deduplicated.rowCount) {
+      console.log(
+        `[setup-db] Kept each resident's latest message reaction and removed ${deduplicated.rowCount} superseded reaction(s).`
+      );
+    }
+    await schemaClient.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "DirectMessageReaction_messageId_userId_key"
+      ON ecorewards."DirectMessageReaction" ("messageId", "userId")
+    `);
+  }
+  await schemaClient.query("COMMIT");
 } catch (error) {
+  try {
+    await schemaClient.query("ROLLBACK");
+  } catch (rollbackError) {
+    console.error("[setup-db] Failed to roll back the reaction-index preparation:", rollbackError);
+  }
   console.error("[setup-db] Could not create or access the ecorewards database schema:", error);
   throw error;
 } finally {
