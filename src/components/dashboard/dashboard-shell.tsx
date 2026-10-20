@@ -227,7 +227,6 @@ export function DashboardShell({
               >
                 <Link
                   href={item.href}
-                  onClick={() => setMobileOpen(false)}
                   className={cn(
                     "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
                     isActive
