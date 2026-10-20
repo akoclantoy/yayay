@@ -135,6 +135,7 @@ export function TupiLeafletMap({
                 weight: isHeat ? 1 : 2,
                 fillColor: color,
                 fillOpacity: isHeat ? 0.22 : 0.8,
+                bubblingMouseEvents: false,
               }}
               eventHandlers={{
                 click: (event) => {
@@ -170,7 +171,7 @@ export function TupiLeafletMap({
       </MapContainer>
       {onSelect && (
         <div className="pointer-events-none absolute left-3 top-3 z-[500] rounded-xl border border-white/70 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur">
-          Click anywhere within Tupi to pin your pickup location
+          Click an open spot to pin a pickup; select an orange circle for activity details
         </div>
       )}
     </div>
