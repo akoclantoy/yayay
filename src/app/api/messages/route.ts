@@ -65,7 +65,7 @@ export async function GET(request: Request) {
       where: { conversationId, deletedAt: null },
       orderBy: { createdAt: "asc" },
       take: 500,
-      include: { sender: { select: { id: true, name: true, role: true } } },
+      include: { sender: { select: { id: true, name: true, role: true, image: true } } },
     });
     return NextResponse.json({ conversation, messages });
   }
@@ -91,12 +91,12 @@ export async function GET(request: Request) {
           address: true,
           status: true,
           scheduledDate: true,
-          user: { select: { id: true, name: true } },
+          user: { select: { id: true, name: true, image: true } },
           assignedStaff: { select: { id: true, name: true } },
         },
       },
-      resident: { select: { id: true, name: true } },
-      staff: { select: { id: true, name: true } },
+      resident: { select: { id: true, name: true, image: true } },
+      staff: { select: { id: true, name: true, image: true } },
       messages: {
         where: { deletedAt: null },
         orderBy: { createdAt: "desc" },
@@ -170,7 +170,7 @@ export async function POST(request: Request) {
           imageUrl: uploaded?.url,
           imagePublicId: uploaded?.publicId,
         },
-        include: { sender: { select: { id: true, name: true, role: true } } },
+        include: { sender: { select: { id: true, name: true, role: true, image: true } } },
       });
       await tx.conversation.update({
         where: { id: conversation.id },
@@ -233,7 +233,7 @@ export async function PATCH(request: Request) {
       const updated = await tx.conversationMessage.update({
         where: { id: message.id },
         data: { content: parsed.data.content, editedAt: new Date() },
-        include: { sender: { select: { id: true, name: true, role: true } } },
+        include: { sender: { select: { id: true, name: true, role: true, image: true } } },
       });
       await tx.conversation.update({
         where: { id: message.conversation.id },

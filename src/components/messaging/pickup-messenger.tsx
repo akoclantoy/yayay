@@ -1,13 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ImagePlus, LoaderCircle, MessageCircle, Pencil, Send, Trash2 } from "lucide-react";
+import {
+  ImagePlus,
+  LoaderCircle,
+  MapPin,
+  MessageCircle,
+  Pencil,
+  Send,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 
 type Message = {
   id: string;
@@ -16,7 +25,7 @@ type Message = {
   systemMessage: boolean;
   editedAt: string | null;
   createdAt: string;
-  sender: { id: string; name: string | null; role: string };
+  sender: { id: string; name: string | null; role: string; image: string | null };
 };
 
 type Conversation = {
@@ -26,11 +35,11 @@ type Conversation = {
     address: string;
     status: string;
     scheduledDate: string | null;
-    user: { id: string; name: string | null };
+    user: { id: string; name: string | null; image: string | null };
     assignedStaff: { id: string; name: string | null } | null;
   };
-  resident: { id: string; name: string | null };
-  staff: { id: string; name: string | null } | null;
+  resident: { id: string; name: string | null; image: string | null };
+  staff: { id: string; name: string | null; image: string | null } | null;
   messages: { content: string | null; imageUrl: string | null; createdAt: string }[];
 };
 
@@ -50,7 +59,8 @@ function isMessage(value: unknown): value is Message {
     message.sender !== null &&
     typeof message.sender.id === "string" &&
     (typeof message.sender.name === "string" || message.sender.name === null) &&
-    typeof message.sender.role === "string"
+    typeof message.sender.role === "string" &&
+    (typeof message.sender.image === "string" || message.sender.image === null)
   );
 }
 
@@ -85,6 +95,17 @@ export function PickupMessenger({ userId }: { userId: string }) {
   const [sending, setSending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const activeConversation = conversations.find((item) => item.id === activeId);
+  const activeIsResident = activeConversation?.resident.id === userId;
+  const activeOtherName = activeConversation
+    ? activeIsResident
+      ? activeConversation.staff?.name ?? activeConversation.pickup.assignedStaff?.name ?? "Pickup support"
+      : activeConversation.resident.name ?? "Resident"
+    : "";
+  const activeOtherImage = activeConversation
+    ? activeIsResident
+      ? activeConversation.staff?.image ?? null
+      : activeConversation.resident.image
+    : null;
 
   const loadConversations = useCallback(async () => {
     const response = await fetch("/api/messages", { cache: "no-store" });
@@ -236,6 +257,9 @@ export function PickupMessenger({ userId }: { userId: string }) {
                 conversation.resident.id === userId
                   ? conversation.staff?.name ?? conversation.pickup.assignedStaff?.name ?? "Awaiting staff"
                   : conversation.resident.name ?? "Resident";
+              const otherImage = conversation.resident.id === userId
+                ? conversation.staff?.image ?? null
+                : conversation.resident.image;
               const preview = conversation.messages[0];
               return (
                 <button
@@ -249,11 +273,28 @@ export function PickupMessenger({ userId }: { userId: string }) {
                       : "hover:bg-muted/70"
                   )}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="truncate font-semibold">{otherName}</span>
-                    <Badge variant="secondary">{conversation.pickup.status}</Badge>
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-12 w-12 border-2 border-white shadow-md ring-2 ring-emerald-700/10">
+                      <AvatarImage
+                        src={otherImage ?? undefined}
+                        alt={`${otherName} profile photo`}
+                        className="object-cover"
+                      />
+                      <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-lime-100 font-semibold text-emerald-900">
+                        {getInitials(otherName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-semibold">{otherName}</span>
+                        <Badge variant="secondary">{conversation.pickup.status}</Badge>
+                      </div>
+                      <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        {conversation.pickup.address}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{conversation.pickup.address}</p>
                   <p className="mt-2 truncate text-sm text-muted-foreground">
                     {preview?.content ?? (preview?.imageUrl ? "Photo attachment" : "No messages yet")}
                   </p>
@@ -269,13 +310,24 @@ export function PickupMessenger({ userId }: { userId: string }) {
           <>
             <CardHeader className="border-b bg-card/80">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <CardTitle className="text-lg">
-                    {activeConversation.resident.id === userId
-                      ? activeConversation.staff?.name ?? activeConversation.pickup.assignedStaff?.name ?? "Pickup support"
-                      : activeConversation.resident.name ?? "Resident"}
-                  </CardTitle>
-                  <p className="mt-1 text-sm text-muted-foreground">{activeConversation.pickup.address}</p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar className="h-14 w-14 border-2 border-background shadow-md ring-2 ring-emerald-700/15">
+                    <AvatarImage
+                      src={activeOtherImage ?? undefined}
+                      alt={`${activeOtherName} profile photo`}
+                      className="object-cover"
+                    />
+                    <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-lime-100 text-lg font-semibold text-emerald-900">
+                      {getInitials(activeOtherName)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <CardTitle className="truncate text-lg">{activeOtherName}</CardTitle>
+                    <p className="mt-1 flex items-center gap-1 truncate text-sm text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+                      {activeConversation.pickup.address}
+                    </p>
+                  </div>
                 </div>
                 <div className="text-right text-xs text-muted-foreground">
                   <Badge variant="outline">{activeConversation.pickup.status}</Badge>
@@ -295,7 +347,22 @@ export function PickupMessenger({ userId }: { userId: string }) {
                   messages.map((message) => {
                     const own = message.sender.id === userId;
                     return (
-                      <div key={message.id} className={cn("flex", own ? "justify-end" : "justify-start")}>
+                      <div
+                        key={message.id}
+                        className={cn("flex items-end gap-2", own ? "justify-end" : "justify-start")}
+                      >
+                        {!own && !message.systemMessage && (
+                          <Avatar className="h-8 w-8 border border-background shadow-sm">
+                            <AvatarImage
+                              src={message.sender.image ?? undefined}
+                              alt={`${message.sender.name ?? "Resident"} profile photo`}
+                              className="object-cover"
+                            />
+                            <AvatarFallback className="bg-emerald-100 text-[10px] font-semibold text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+                              {getInitials(message.sender.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
                         <div className={cn(
                           "max-w-[88%] rounded-2xl px-4 py-3 shadow-sm sm:max-w-[78%]",
                           message.systemMessage
