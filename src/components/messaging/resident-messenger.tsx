@@ -8,9 +8,11 @@ import {
   CheckCheck,
   ChevronDown,
   ImagePlus,
-  Leaf,
   MessageCircle,
   MoreHorizontal,
+  Ban,
+  Trash2,
+  UserRoundX,
   Recycle,
   Search,
   Send,
@@ -39,11 +41,12 @@ type DirectoryResident = Resident & {
 type FriendRequest = { id: string; resident: Resident; createdAt: string };
 type Message = { id: string; senderId: string; content: string; createdAt: string };
 type Conversation = {
-  id: string;
+  id: string | null;
   theme: string;
   backgroundImageUrl: string | null;
   friend: Resident;
   lastMessage: { content: string; createdAt: string; senderId: string } | null;
+  unread: boolean;
 };
 type FriendProfile = Resident & {
   isFriend: boolean;
@@ -51,7 +54,14 @@ type FriendProfile = Resident & {
   incomingRequest: string | null;
   mutualFriends: Resident[];
 };
-type ConversationDetails = Conversation & { messages: Message[] };
+type ConversationDetails = {
+  id: string;
+  theme: string;
+  backgroundImageUrl: string | null;
+  friend: Resident;
+  messages: Message[];
+  readAt: string | null;
+};
 type MessengerData = {
   ownProfile: { qrCode: string; user: { name: string | null; image: string | null } } | null;
   friends: Friend[];
@@ -101,9 +111,11 @@ function getErrorMessage(error: unknown) {
 export function ResidentMessenger({
   residentName,
   residentImage,
+  residentId,
 }: {
   residentName: string;
   residentImage: string | null;
+  residentId: string;
 }) {
   const [tab, setTab] = useState<Tab>("inbox");
   const [data, setData] = useState<MessengerData | null>(null);
@@ -128,6 +140,8 @@ export function ResidentMessenger({
   const [transferAmount, setTransferAmount] = useState("");
   const [transferBalance, setTransferBalance] = useState(0);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsAction, setSettingsAction] = useState<"unfriend" | "block" | "delete" | null>(null);
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
 
@@ -151,7 +165,79 @@ export function ResidentMessenger({
       `/api/resident/direct-messages?conversationId=${encodeURIComponent(conversationId)}`,
     );
     setDetails(response.conversation);
+    return response.conversation;
   }, []);
+
+  const refreshOpenConversation = useCallback(async (conversationId: string) => {
+    const conversation = await loadDetails(conversationId);
+    const latestMessage = conversation.messages.at(-1);
+    if (
+      latestMessage &&
+      latestMessage.senderId !== residentId &&
+      (!conversation.readAt || new Date(latestMessage.createdAt) > new Date(conversation.readAt))
+    ) {
+      const result = await requestJson<{ readAt: string }>("/api/resident/direct-messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "read", conversationId }),
+      });
+      setDetails((current) =>
+        current?.id === conversationId
+          ? { ...current, readAt: result.readAt }
+          : current,
+      );
+    }
+    await refresh();
+  }, [loadDetails, refresh, residentId]);
+
+  const lookupQr = useCallback(async (qrCode: string) => {
+    try {
+      setError(null);
+      const response = await requestJson<{ profile: FriendProfile }>(
+        `/api/resident/friends?qr=${encodeURIComponent(qrCode.trim())}`,
+      );
+      setProfile(response.profile);
+      setTab("friends");
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    }
+  }, []);
+
+  const connectByQr = useCallback(async (qrCode: string) => {
+    setWorking(true);
+    setError(null);
+    try {
+      const result = await requestJson<{ isFriend: boolean; connectedNow: boolean; friend: Resident }>(
+        "/api/resident/friends",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ qrCode: qrCode.trim(), connection: "QR_SCAN" }),
+        },
+      );
+      await refresh();
+      const conversationResponse = await requestJson<{ conversations: Conversation[] }>(
+        "/api/resident/direct-messages",
+      );
+      setConversations(conversationResponse.conversations);
+      setProfile(null);
+      setTab("inbox");
+      setActiveFriendId(result.friend.id);
+      setActiveConversationId(
+        conversationResponse.conversations.find(
+          (conversation) => conversation.friend.id === result.friend.id,
+        )?.id ?? null,
+      );
+      setDetails(null);
+      setNotice(result.connectedNow
+        ? `You and ${displayName(result.friend)} are now friends.`
+        : `You are already friends with ${displayName(result.friend)}.`);
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setWorking(false);
+    }
+  }, [refresh]);
 
   useEffect(() => {
     let active = true;
@@ -175,10 +261,7 @@ export function ResidentMessenger({
     let active = true;
     const load = async () => {
       try {
-        const response = await requestJson<{ conversation: ConversationDetails }>(
-          `/api/resident/direct-messages?conversationId=${encodeURIComponent(activeConversationId)}`,
-        );
-        if (active) setDetails(response.conversation);
+        await refreshOpenConversation(activeConversationId);
       } catch (cause) {
         if (active) setError(getErrorMessage(cause));
       }
@@ -187,7 +270,7 @@ export function ResidentMessenger({
     return () => {
       active = false;
     };
-  }, [activeConversationId]);
+  }, [activeConversationId, refreshOpenConversation]);
 
   useEffect(() => {
     if (tab !== "directory") return;
@@ -220,27 +303,43 @@ export function ResidentMessenger({
   }, [search, tab]);
 
   useEffect(() => {
-    if (!activeConversationId) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
       const updateOpenConversation = async () => {
-        try {
-          const [conversationResponse, messageResponse] = await Promise.all([
-            requestJson<{ conversations: Conversation[] }>("/api/resident/direct-messages"),
-            requestJson<{ conversation: ConversationDetails }>(
-              `/api/resident/direct-messages?conversationId=${encodeURIComponent(activeConversationId)}`,
-            ),
-          ]);
-          setConversations(conversationResponse.conversations);
-          setDetails(messageResponse.conversation);
-        } catch (cause) {
-          setError(getErrorMessage(cause));
+        if (activeConversationId) {
+          await refreshOpenConversation(activeConversationId);
+        } else {
+          await refresh();
         }
       };
-      void updateOpenConversation();
-    }, 5000);
+      void updateOpenConversation().catch((cause: unknown) => {
+        setError(getErrorMessage(cause));
+      });
+    }, 8000);
     return () => window.clearInterval(timer);
-  }, [activeConversationId]);
+  }, [activeConversationId, refresh, refreshOpenConversation]);
+
+  useEffect(() => {
+    const events = new EventSource("/api/realtime");
+    const updateMessages = () => {
+      if (document.visibilityState !== "visible") return;
+      const update = async () => {
+        if (activeConversationId) {
+          await refreshOpenConversation(activeConversationId);
+        } else {
+          await refresh();
+        }
+      };
+      void update().catch((cause: unknown) => {
+        setError(getErrorMessage(cause));
+      });
+    };
+    events.addEventListener("invalidate", updateMessages);
+    return () => {
+      events.removeEventListener("invalidate", updateMessages);
+      events.close();
+    };
+  }, [activeConversationId, refresh, refreshOpenConversation]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -300,55 +399,6 @@ export function ResidentMessenger({
     const query = search.trim().toLocaleLowerCase();
     return (data?.friends ?? []).filter((friend) => displayName(friend).toLocaleLowerCase().includes(query));
   }, [data?.friends, search]);
-
-  const lookupQr = useCallback(async (qrCode: string) => {
-    try {
-      setError(null);
-      const response = await requestJson<{ profile: FriendProfile }>(
-        `/api/resident/friends?qr=${encodeURIComponent(qrCode.trim())}`,
-      );
-      setProfile(response.profile);
-      setTab("friends");
-    } catch (cause) {
-      setError(getErrorMessage(cause));
-    }
-  }, []);
-
-  const connectByQr = useCallback(async (qrCode: string) => {
-    setWorking(true);
-    setError(null);
-    try {
-      const result = await requestJson<{ isFriend: boolean; connectedNow: boolean; friend: Resident }>(
-        "/api/resident/friends",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ qrCode: qrCode.trim(), connection: "QR_SCAN" }),
-        },
-      );
-      await refresh();
-      const conversationResponse = await requestJson<{ conversations: Conversation[] }>(
-        "/api/resident/direct-messages",
-      );
-      setConversations(conversationResponse.conversations);
-      setProfile(null);
-      setTab("inbox");
-      setActiveFriendId(result.friend.id);
-      setActiveConversationId(
-        conversationResponse.conversations.find(
-          (conversation) => conversation.friend.id === result.friend.id,
-        )?.id ?? null,
-      );
-      setDetails(null);
-      setNotice(result.connectedNow
-        ? `You and ${displayName(result.friend)} are now friends.`
-        : `You are already friends with ${displayName(result.friend)}.`);
-    } catch (cause) {
-      setError(getErrorMessage(cause));
-    } finally {
-      setWorking(false);
-    }
-  }, [refresh]);
 
   async function updateRequest(
     requestId: string,
@@ -530,6 +580,44 @@ export function ResidentMessenger({
     }
   }
 
+  async function updateConversation(action: "unfriend" | "block" | "delete") {
+    if (!activeFriend) return;
+    if (action === "delete" && !activeConversationId) {
+      setError("There is no conversation to delete yet.");
+      return;
+    }
+    setWorking(true);
+    setError(null);
+    try {
+      await requestJson("/api/resident/direct-messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          friendId: activeFriend.id,
+          ...(activeConversationId ? { conversationId: activeConversationId } : {}),
+        }),
+      });
+      await refresh();
+      setActiveFriendId(null);
+      setActiveConversationId(null);
+      setDetails(null);
+      setSettingsOpen(false);
+      setSettingsAction(null);
+      setNotice(
+        action === "unfriend"
+          ? `${displayName(activeFriend)} was removed from your friends.`
+          : action === "block"
+            ? `${displayName(activeFriend)} was blocked.`
+            : "Conversation deleted from your inbox.",
+      );
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setWorking(false);
+    }
+  }
+
   function openFriend(friend: Friend) {
     const conversation = conversations.find((item) => item.friend.id === friend.id);
     setActiveFriendId(friend.id);
@@ -588,14 +676,12 @@ export function ResidentMessenger({
   return (
     <main className={cn("min-h-screen bg-[var(--background)] text-[var(--foreground)]", activeFriend ? "fixed inset-0 z-[60] h-[100dvh] overflow-hidden p-0" : "px-3 py-3 sm:px-5 sm:py-5")}>
       <section className={cn("mx-auto flex flex-col overflow-hidden bg-white/85 backdrop-blur-xl", activeFriend ? "h-full min-h-0 w-full max-w-none rounded-none border-0 shadow-none" : "min-h-[calc(100svh-1.5rem)] max-w-[1600px] rounded-[28px] border border-border/80 shadow-[0_20px_80px_rgba(24,50,42,0.12)] sm:min-h-[calc(100svh-2.5rem)]")}>
-        <header className="flex h-[76px] shrink-0 items-center justify-between border-b border-border/70 px-4 sm:px-7">
+        {!activeFriend && <header className="flex h-[76px] shrink-0 items-center justify-between border-b border-border/70 px-4 sm:px-7">
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/resident" aria-label="Return to resident dashboard" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-white text-muted-foreground transition hover:bg-muted hover:text-primary">
               <ArrowLeft className="h-4 w-4" />
             </Link>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary text-white shadow-lg shadow-primary/20">
-              <Leaf className="h-5 w-5" />
-            </div>
+            <ProfileAvatar resident={{ id: "me", name: residentName, image: residentImage }} size="h-10 w-10" />
             <div className="min-w-0">
               <p className="truncate text-sm font-bold tracking-tight sm:text-base">EcoRewards Messenger</p>
               <p className="hidden text-xs text-muted-foreground sm:block">Good conversations grow greener communities</p>
@@ -608,7 +694,7 @@ export function ResidentMessenger({
               <Recycle className="h-5 w-5" />
             </Link>
           </div>
-        </header>
+        </header>}
 
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[310px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]">
           <aside className={cn("flex min-h-0 flex-col border-r border-border/70 bg-white/55", activeFriend && "hidden lg:flex")}>
@@ -653,14 +739,17 @@ export function ResidentMessenger({
               ) : tab === "inbox" ? (
                 <div>
                   {filteredConversations.length ? filteredConversations.map((item) => (
-                    <button key={item.id} type="button" onClick={() => { setActiveFriendId(item.friend.id); setActiveConversationId(item.id); setDetails(null); }} className={cn("flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-muted/60", activeConversationId === item.id && "bg-primary/8")}>
-                      <ProfileAvatar resident={item.friend} />
+                    <button key={item.friend.id} type="button" onClick={() => { setActiveFriendId(item.friend.id); setActiveConversationId(item.id); setDetails(null); setSettingsOpen(false); }} className={cn("flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-muted/60", activeConversationId === item.id && "bg-primary/8")}>
+                      <span className="relative shrink-0">
+                        <ProfileAvatar resident={item.friend} />
+                        {item.unread && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-primary" aria-label="Unread message" />}
+                      </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-semibold">{displayName(item.friend)}</span>
-                          <span className="shrink-0 text-[10px] text-muted-foreground">{item.lastMessage ? dateFormatter.format(new Date(item.lastMessage.createdAt)) : ""}</span>
+                          <span className={cn("truncate text-sm", item.unread ? "font-extrabold text-foreground" : "font-semibold")}>{displayName(item.friend)}</span>
+                          <span className={cn("shrink-0 text-[10px]", item.unread ? "font-bold text-primary" : "text-muted-foreground")}>{item.lastMessage ? dateFormatter.format(new Date(item.lastMessage.createdAt)) : ""}</span>
                         </span>
-                        <span className="mt-1 block truncate text-xs text-muted-foreground">{item.lastMessage?.content ?? "Start a conversation"}</span>
+                        <span className={cn("mt-1 block truncate text-xs", item.unread ? "font-bold text-foreground" : "text-muted-foreground")}>{item.lastMessage?.content ?? "Start a conversation"}</span>
                       </span>
                     </button>
                   )) : <EmptyList icon={<MessageCircle />} title="Your inbox is ready" text="Open a friend from your list to start chatting." action="Browse friends" onAction={() => setTab("friends")} />}
@@ -743,7 +832,7 @@ export function ResidentMessenger({
             </div>
           </aside>
 
-          <section className={cn("relative flex min-h-[60svh] min-w-0 flex-col lg:min-h-0", !activeFriend && "hidden lg:flex")}>
+          <section className={cn("relative flex min-w-0 flex-col", activeFriend ? "h-full min-h-0" : "min-h-[60svh] lg:min-h-0", !activeFriend && "hidden lg:flex")}>
             {activeFriend ? (
               <>
                 <header className="flex min-h-[78px] items-center justify-between border-b border-border/70 px-4 sm:px-7">
@@ -755,16 +844,18 @@ export function ResidentMessenger({
                   <div className="flex items-center gap-1">
                     <button type="button" title="Transfer points by scanning their QR code" onClick={() => void startTransferScan()} className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Wallet className="h-5 w-5" /></button>
                     <button type="button" title="Conversation appearance" onClick={() => setThemeOpen((open) => !open)} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><Settings2 className="h-5 w-5" /></button>
-                    <button type="button" title="View mutual friends" onClick={() => { const friend = data?.friends.find((item) => item.id === activeFriend.id); if (friend?.qrCode) void lookupQr(friend.qrCode); }} className="hidden h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted sm:flex"><MoreHorizontal className="h-5 w-5" /></button>
+                    <button type="button" title="Conversation settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen((open) => !open); setThemeOpen(false); }} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><MoreHorizontal className="h-5 w-5" /></button>
                   </div>
                 </header>
+
+                {settingsOpen && <div className="absolute right-4 top-[68px] z-20 w-[min(300px,calc(100%-2rem))] overflow-hidden rounded-2xl border border-border bg-white p-2 shadow-xl sm:right-7"><div className="px-3 pb-2 pt-2"><p className="text-sm font-semibold">Conversation settings</p><p className="mt-0.5 text-xs text-muted-foreground">Manage this connection and your inbox.</p></div><button type="button" onClick={() => setSettingsAction("unfriend")} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition hover:bg-muted"><UserRoundX className="h-4 w-4 text-muted-foreground" /><span><span className="block font-medium">Unfriend</span><span className="text-xs text-muted-foreground">Remove from your friends</span></span></button><button type="button" onClick={() => setSettingsAction("block")} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition hover:bg-danger/5"><Ban className="h-4 w-4 text-danger" /><span><span className="block font-medium text-danger">Block resident</span><span className="text-xs text-muted-foreground">Hide profiles and stop messages</span></span></button><button type="button" disabled={!activeConversationId} onClick={() => setSettingsAction("delete")} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition hover:bg-danger/5 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="h-4 w-4 text-danger" /><span><span className="block font-medium text-danger">Delete conversation</span><span className="text-xs text-muted-foreground">Remove it from your inbox</span></span></button></div>}
 
                 {themeOpen && <div className="absolute right-4 top-[68px] z-20 w-[min(340px,calc(100%-2rem))] rounded-2xl border border-border bg-white p-4 shadow-xl sm:right-7"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Shared chat appearance</p><button type="button" onClick={() => setThemeOpen(false)} aria-label="Close appearance settings" className="text-muted-foreground"><X className="h-4 w-4" /></button></div><p className="mt-1 text-xs text-muted-foreground">Changes are visible to both friends.</p><div className="mt-3 grid grid-cols-5 gap-2">{Object.entries(THEMES).map(([key, theme]) => <button key={key} type="button" title={theme.label} onClick={() => void saveTheme(key)} className={cn("h-10 rounded-xl border-2 transition hover:scale-105", currentDetails?.theme === key ? "border-primary" : "border-white shadow")} style={{ background: theme.background }} />)}</div><label className="mt-4 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5 text-sm hover:border-primary/40"><ImagePlus className="h-4 w-4 text-primary" /><span className="min-w-0 flex-1 truncate">{backgroundFile?.name ?? "Upload background image"}</span><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => setBackgroundFile(event.target.files?.[0] ?? null)} /></label>{backgroundFile && <Button size="sm" className="mt-2 w-full" disabled={working} onClick={() => void saveTheme()}>{working ? "Saving..." : "Share background"}</Button>}</div>}
 
                 <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-8" style={{ background: currentTheme.background, ...(currentDetails?.backgroundImageUrl ? { backgroundImage: `linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,.72)), url("${currentDetails.backgroundImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" } : {}) }}>
-                  <div className="mx-auto mb-5 max-w-sm text-center"><span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm"><Leaf className="h-3 w-3" />Your EcoRewards connection</span><p className="mt-2 text-xs text-muted-foreground">Messages are private between friends.</p></div>
+                  <div className="mx-auto mb-5 max-w-sm text-center"><span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm"><MessageCircle className="h-3 w-3" />Your EcoRewards connection</span><p className="mt-2 text-xs text-muted-foreground">Messages are private between friends.</p></div>
                   {currentDetails?.messages.map((message) => {
-                    const mine = message.senderId !== activeFriend.id;
+                    const mine = message.senderId === residentId;
                     return <div key={message.id} className={cn("mb-3 flex w-full", mine ? "justify-end" : "justify-start")}><div className={cn("max-w-[min(82%,520px)] rounded-2xl px-4 py-2.5 shadow-sm", mine ? "rounded-br-md bg-primary text-white" : "rounded-bl-md border border-white/70 bg-white/90 text-foreground")}><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.content}</p><div className={cn("mt-1 flex items-center justify-end gap-1 text-[10px]", mine ? "text-white/70" : "text-muted-foreground")}>{dateFormatter.format(new Date(message.createdAt))}{mine && <CheckCheck className="h-3 w-3" />}</div></div></div>;
                   })}
                   {activeConversationId && !currentDetails && <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading conversation…</div>}
@@ -795,6 +886,8 @@ export function ResidentMessenger({
       {scannerOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="qr-dialog-title"><div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:p-7"><div className="flex items-start justify-between"><div><h2 id="qr-dialog-title" className="text-lg font-bold">{transferMode ? "Transfer points" : "Scan to connect"}</h2><p className="mt-1 text-sm text-muted-foreground">{transferMode ? "Scan your friend's QR code to choose a recipient." : "Scanning a resident's QR code connects you as friends right away."}</p></div><button type="button" aria-label="Close scanner" onClick={() => setScannerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button></div><div id="resident-qr-reader" className="mt-5 min-h-60 overflow-hidden rounded-2xl bg-slate-950" />{scannerError && <p role="alert" className="mt-3 rounded-xl bg-danger/10 p-3 text-sm text-danger">{scannerError}</p>}<p className="mt-3 text-center text-xs text-muted-foreground">Allow camera access and hold the QR code inside the frame.</p></div></div>}
 
       {profile && <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-labelledby="resident-profile-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className="flex justify-end"><button type="button" aria-label="Close profile" onClick={() => { setProfile(null); setTransferMode(false); }} className="text-muted-foreground"><X className="h-5 w-5" /></button></div><div className="flex flex-col items-center text-center"><ProfileAvatar resident={profile} size="h-20 w-20" /><h2 id="resident-profile-title" className="mt-3 text-lg font-bold">{displayName(profile)}</h2><p className="text-xs text-muted-foreground">{profile.isFriend ? "Your EcoRewards friend" : "Resident profile"}</p></div>{profile.mutualFriends.length > 0 && <div className="mt-5 rounded-2xl bg-muted/50 p-3"><p className="mb-2 text-xs font-semibold text-muted-foreground">Mutual friends · {profile.mutualFriends.length}</p><div className="flex flex-wrap gap-2">{profile.mutualFriends.map((friend) => <span key={friend.id} title={displayName(friend)}><ProfileAvatar resident={friend} size="h-8 w-8" /></span>)}</div></div>}{transferMode && profile.isFriend ? <form onSubmit={(event) => void submitTransfer(event)} className="mt-5 space-y-3"><div className="rounded-xl bg-primary/5 p-3 text-sm"><span className="text-muted-foreground">Your balance</span><strong className="float-right text-primary">{transferBalance.toLocaleString("en-US")} pts</strong></div><label className="block text-left text-xs font-medium">Points to send<input type="number" min="1" max="10000" step="1" required value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-primary/50" placeholder="Maximum 10,000" /></label><p className="text-xs text-muted-foreground">No fee. Up to 10,000 points per transfer. The transfer cannot be undone.</p><Button type="submit" className="w-full" disabled={working || !transferAmount || Number(transferAmount) > transferBalance}><Wallet className="h-4 w-4" />{working ? "Sending..." : `Confirm and send${transferAmount ? ` ${Number(transferAmount).toLocaleString("en-US")} pts` : ""}`}</Button></form> : <div className="mt-5 space-y-2">{profile.incomingRequest ? <Button className="w-full" disabled={working} onClick={() => void updateRequest(profile.incomingRequest!, "ACCEPT")}><Check className="h-4 w-4" />Accept friend request</Button> : profile.isFriend ? <><Button className="w-full" onClick={() => { const friend = data?.friends.find((item) => item.id === profile.id); if (friend) openFriend(friend); setProfile(null); }}><MessageCircle className="h-4 w-4" />Message friend</Button><Button variant="outline" className="w-full" onClick={() => { setTransferMode(true); void loadTransferBalance(); }}><Wallet className="h-4 w-4" />Transfer points</Button></> : profile.outgoingRequest ? <Button variant="secondary" className="w-full" disabled={working} onClick={() => void cancelRequest(profile.outgoingRequest!)}><X className="h-4 w-4" />Cancel friend request</Button> : <Button className="w-full" disabled={working} onClick={() => void sendFriendRequest()}><UserPlus className="h-4 w-4" />Send friend request</Button>}</div>}</div></div>}
+
+      {settingsAction && activeFriend && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="conversation-action-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className={cn("mx-auto flex h-12 w-12 items-center justify-center rounded-2xl", settingsAction === "delete" ? "bg-danger/10 text-danger" : "bg-primary/10 text-primary")}>{settingsAction === "block" ? <Ban className="h-5 w-5" /> : settingsAction === "delete" ? <Trash2 className="h-5 w-5" /> : <UserRoundX className="h-5 w-5" />}</div><h2 id="conversation-action-title" className="mt-4 text-center text-lg font-bold">{settingsAction === "unfriend" ? "Unfriend this resident?" : settingsAction === "block" ? "Block this resident?" : "Delete this conversation?"}</h2><p className="mt-2 text-center text-sm leading-6 text-muted-foreground">{settingsAction === "unfriend" ? `${displayName(activeFriend)} will be removed from your friends. You can reconnect later by sending a new friend request.` : settingsAction === "block" ? `${displayName(activeFriend)} will be removed from your friends and hidden from your directory. Neither of you can view the other's profile or send messages.` : "This removes the conversation from your inbox. It does not delete the other resident's copy."}</p><div className="mt-6 flex gap-3"><Button type="button" variant="secondary" className="flex-1" disabled={working} onClick={() => setSettingsAction(null)}>Keep</Button><Button type="button" variant={settingsAction === "unfriend" ? "default" : "destructive"} className="flex-1" disabled={working} onClick={() => void updateConversation(settingsAction)}>{working ? "Please wait..." : settingsAction === "unfriend" ? "Unfriend" : settingsAction === "block" ? "Block resident" : "Delete chat"}</Button></div></div></div>}
 
       {loading && <span className="sr-only" aria-live="polite">Loading messenger</span>}
     </main>
