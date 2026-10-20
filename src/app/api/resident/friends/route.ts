@@ -2,18 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
+import { canonicalFriendshipPair } from "@/lib/resident-social";
 
 const requestSchema = z.object({ qrCode: z.string().trim().min(1).max(200) });
 const updateSchema = z.object({
   requestId: z.string().min(1),
   action: z.enum(["ACCEPT", "DECLINE"]),
 });
-
-function orderedPair(firstId: string, secondId: string) {
-  return firstId < secondId
-    ? { userLowId: firstId, userHighId: secondId }
-    : { userLowId: secondId, userHighId: firstId };
-}
 
 export async function GET(request: Request) {
   const authResult = await requireRole(["RESIDENT"]);
@@ -40,7 +35,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "This is your own QR code" }, { status: 400 });
       }
 
-      const pair = orderedPair(userId, profile.user.id);
+      const pair = canonicalFriendshipPair(userId, profile.user.id);
       const [friendship, outgoingRequest, incomingRequest] = await Promise.all([
         db.friendship.findUnique({ where: { userLowId_userHighId: pair } }),
         db.friendRequest.findUnique({
@@ -176,7 +171,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You cannot add yourself" }, { status: 400 });
     }
 
-    const pair = orderedPair(userId, target.userId);
+    const pair = canonicalFriendshipPair(userId, target.userId);
     const friendship = await db.friendship.findUnique({ where: { userLowId_userHighId: pair } });
     if (friendship) return NextResponse.json({ error: "You are already friends" }, { status: 409 });
 
@@ -245,7 +240,7 @@ export async function PATCH(request: Request) {
         data: { status: "ACCEPTED" },
       });
       if (!updated.count) throw new Error("REQUEST_ALREADY_HANDLED");
-      const pair = orderedPair(userId, friendRequest.senderId);
+      const pair = canonicalFriendshipPair(userId, friendRequest.senderId);
       await tx.friendship.upsert({
         where: { userLowId_userHighId: pair },
         create: pair,

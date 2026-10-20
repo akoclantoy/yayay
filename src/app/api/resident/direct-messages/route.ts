@@ -2,22 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
+import { canonicalDirectConversationPair, canonicalFriendshipPair } from "@/lib/resident-social";
 
 const messageSchema = z.object({
   friendId: z.string().min(1),
   content: z.string().trim().min(1).max(2000),
 });
 
-function orderedPair(firstId: string, secondId: string) {
-  return firstId < secondId
-    ? { participantLowId: firstId, participantHighId: secondId }
-    : { participantLowId: secondId, participantHighId: firstId };
-}
-
 async function isFriend(firstId: string, secondId: string) {
-  const pair = firstId < secondId
-    ? { userLowId: firstId, userHighId: secondId }
-    : { userLowId: secondId, userHighId: firstId };
+  const pair = canonicalFriendshipPair(firstId, secondId);
   return db.friendship.findUnique({ where: { userLowId_userHighId: pair } });
 }
 
@@ -152,7 +145,7 @@ export async function POST(request: Request) {
     });
     if (!friend) return NextResponse.json({ error: "Resident unavailable" }, { status: 404 });
 
-    const pair = orderedPair(userId, friendId);
+    const pair = canonicalDirectConversationPair(userId, friendId);
     const result = await db.$transaction(async (tx) => {
       const conversation = await tx.directConversation.upsert({
         where: {

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { uploadImage } from "@/lib/cloudinary";
 import { db } from "@/lib/db";
+import { canonicalFriendshipPair } from "@/lib/resident-social";
 
 const themeSchema = z.object({
   conversationId: z.string().min(1),
@@ -55,9 +56,7 @@ export async function PATCH(request: Request) {
     const friendId = conversation.participantLowId === userId
       ? conversation.participantHighId
       : conversation.participantLowId;
-    const pair = userId < friendId
-      ? { userLowId: userId, userHighId: friendId }
-      : { userLowId: friendId, userHighId: userId };
+    const pair = canonicalFriendshipPair(userId, friendId);
     if (!(await db.friendship.findUnique({ where: { userLowId_userHighId: pair } }))) {
       return NextResponse.json({ error: "Conversation is no longer available" }, { status: 403 });
     }

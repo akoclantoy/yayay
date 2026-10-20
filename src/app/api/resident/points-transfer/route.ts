@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
+import { canonicalFriendshipPair } from "@/lib/resident-social";
 
 const transferSchema = z.object({
   recipientQrCode: z.string().trim().min(1).max(200),
@@ -50,9 +51,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You cannot transfer points to yourself" }, { status: 400 });
     }
 
-    const pair = senderId < recipientId
-      ? { userLowId: senderId, userHighId: recipientId }
-      : { userLowId: recipientId, userHighId: senderId };
+    const pair = canonicalFriendshipPair(senderId, recipientId);
     if (!(await db.friendship.findUnique({ where: { userLowId_userHighId: pair } }))) {
       return NextResponse.json({ error: "You can transfer points to friends only" }, { status: 403 });
     }

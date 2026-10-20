@@ -208,6 +208,7 @@ export function ResidentMessenger({
     if (!scannerOpen) return;
     let active = true;
     let scanner: import("html5-qrcode").Html5Qrcode | null = null;
+    let scannerStarted = false;
     const startScanner = async () => {
       try {
         const { Html5Qrcode } = await import("html5-qrcode");
@@ -219,13 +220,16 @@ export function ResidentMessenger({
           { fps: 10, qrbox: { width: 230, height: 230 } },
           (decodedText: string) => {
             void lookupQr(decodedText);
-            void instance.stop().catch((cause: unknown) => {
-              console.error("[resident-messenger] Could not stop QR scanner after a scan:", cause);
-            });
             setScannerOpen(false);
           },
           () => undefined,
         );
+        scannerStarted = true;
+        if (!active) {
+          void instance.stop().then(() => instance.clear()).catch((cause: unknown) => {
+            console.error("[resident-messenger] Could not stop QR scanner:", cause);
+          });
+        }
       } catch (cause) {
         if (active) setScannerError(getErrorMessage(cause));
       }
@@ -233,15 +237,10 @@ export function ResidentMessenger({
     void startScanner();
     return () => {
       active = false;
-      if (scanner) {
-        void scanner.stop().catch((cause: unknown) => {
+      if (scanner && scannerStarted) {
+        void scanner.stop().then(() => scanner?.clear()).catch((cause: unknown) => {
           console.error("[resident-messenger] Could not stop QR scanner:", cause);
         });
-        try {
-          scanner.clear();
-        } catch (cause) {
-          console.error("[resident-messenger] Could not clear QR scanner:", cause);
-        }
       }
     };
   }, [scannerOpen]);
