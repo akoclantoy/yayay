@@ -114,6 +114,7 @@ After seeding, log in with:
 |---|---|---|
 | Landing | `/` | Public |
 | Resident | `/resident` | Residents |
+| Resident Messenger | `/resident/messages` | Residents |
 | Staff | `/staff` | Collection staff |
 | Admin | `/admin` | Administrators |
 
@@ -133,6 +134,8 @@ pooler. The database role must be able to create a function and triggers in the
 
 **Residents**
 - QR card for identification at collection centers
+- QR-only friend discovery, friend requests, direct messages, and mutual-friend profiles
+- Shared conversation themes and friend-only QR points transfers (up to 10,000 points per transfer)
 - Reward wallet & transaction history
 - Redeem points for vouchers and gifts
 - Request home pickup
@@ -163,6 +166,11 @@ npm run db:push      # Push schema to database
 npm run db:seed      # Seed demo data
 npm run db:studio    # Open Prisma Studio
 ```
+
+After deploying changes to `prisma/schema.prisma`, run `npm run db:push`
+against the intended database before using the new features. Verify the
+configured `DATABASE_URL`/`DIRECT_URL` first; this command changes that database's
+schema.
 
 ## Project Structure
 
