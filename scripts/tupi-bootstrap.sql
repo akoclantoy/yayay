@@ -27,6 +27,38 @@ ON CONFLICT ("code") DO UPDATE SET
   "deletedAt" = NULL,
   "updatedAt" = now();
 
+INSERT INTO ecorewards."CollectionCenter"
+  ("id", "name", "description", "address", "barangayId", "latitude", "longitude", "phone", "openHours", "capacityKg", "isActive", "createdAt", "updatedAt")
+SELECT
+  'seed-center-001',
+  'Tupi Municipal Hall Collection Center',
+  'Community recycling center at Tupi Municipal Hall.',
+  'Municipal Hall, Poblacion, Tupi, South Cotabato',
+  barangay."id",
+  6.3313349,
+  124.9511647,
+  NULL,
+  'Mon-Sat 8AM-5PM',
+  5000,
+  true,
+  now(),
+  now()
+FROM ecorewards."Barangay" AS barangay
+WHERE barangay."code" = 'TUPI-POBLACION'
+ON CONFLICT ("id") DO UPDATE SET
+  "name" = EXCLUDED."name",
+  "description" = EXCLUDED."description",
+  "address" = EXCLUDED."address",
+  "barangayId" = EXCLUDED."barangayId",
+  "latitude" = EXCLUDED."latitude",
+  "longitude" = EXCLUDED."longitude",
+  "phone" = EXCLUDED."phone",
+  "openHours" = EXCLUDED."openHours",
+  "capacityKg" = EXCLUDED."capacityKg",
+  "isActive" = true,
+  "deletedAt" = NULL,
+  "updatedAt" = now();
+
 INSERT INTO ecorewards."Conversation"
   ("id", "pickupId", "residentId", "createdAt", "updatedAt")
 SELECT

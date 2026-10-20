@@ -21,7 +21,7 @@ export type TupiMapPoint = {
   value?: number;
   detail?: string;
   details?: string[];
-  kind?: "barangay" | "pickup" | "heat";
+  kind?: "barangay" | "pickup" | "heat" | "center" | "center-inactive";
 };
 
 function getBounds() {
@@ -57,6 +57,8 @@ function MapInteractions({
 function pointColor(point: TupiMapPoint) {
   if (point.kind === "pickup") return "#2563eb";
   if (point.kind === "heat") return "#f97316";
+  if (point.kind === "center") return "#0f766e";
+  if (point.kind === "center-inactive") return "#64748b";
   return "#16a34a";
 }
 
