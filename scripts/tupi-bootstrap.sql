@@ -37,7 +37,7 @@ SELECT
   barangay."id",
   6.3313349,
   124.9511647,
-  NULL,
+  '+63-997-937-4225',
   'Mon-Sat 8AM-5PM',
   5000,
   true,

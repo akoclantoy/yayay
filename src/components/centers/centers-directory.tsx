@@ -44,7 +44,7 @@ const MUNICIPAL_HALL_CENTER: CenterSummary = {
   address: "Municipal Hall, Poblacion, Tupi, South Cotabato",
   latitude: TUPI_CENTER[0],
   longitude: TUPI_CENTER[1],
-  phone: null,
+  phone: "+63-997-937-4225",
   openHours: "Mon-Sat 8AM-5PM",
   capacityKg: 5000,
   isActive: true,
@@ -137,7 +137,7 @@ export function CentersDirectory({
             Tupi, South Cotabato
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">
-            {audience === "admin" ? "Collection Centers" : "Nearby Centers"}
+            {audience === "admin" ? "Collection Center" : "Nearby Centers"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {visibleCenters.length} {visibleCenters.length === 1 ? "center" : "centers"}{" "}

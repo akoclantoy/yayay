@@ -845,9 +845,6 @@ export function ResidentMessenger({
       <section className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white/85">
         {!activeFriend && <header className="flex h-[76px] shrink-0 items-center justify-between border-b border-border/70 px-4 sm:px-7">
           <div className="flex min-w-0 items-center gap-3">
-            <Link href="/resident" aria-label="Return to resident dashboard" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-white text-muted-foreground transition hover:bg-muted hover:text-primary">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
             <div className="min-w-0">
               <p className="truncate text-sm font-bold tracking-tight sm:text-base">EcoRewards Messenger</p>
               <p className="hidden text-xs text-muted-foreground sm:block">Good conversations grow greener communities</p>
@@ -1271,7 +1268,7 @@ export function ResidentMessenger({
         friend={friendCelebration}
       />
 
-      {(error || notice) && <div role={error ? "alert" : "status"} className={cn("fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 text-sm shadow-xl", error ? "bg-danger text-white" : "bg-primary text-white")}><span>{error ?? notice}</span><button type="button" aria-label="Dismiss notification" onClick={() => { setError(null); setNotice(null); }}><X className="h-4 w-4" /></button></div>}
+      {(error || notice) && <div role={error ? "alert" : "status"} className={cn("fixed left-1/2 top-5 z-40 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 text-sm shadow-xl", error ? "bg-danger text-white" : "bg-primary text-white")}><span>{error ?? notice}</span><button type="button" aria-label="Dismiss notification" onClick={() => { setError(null); setNotice(null); }}><X className="h-4 w-4" /></button></div>}
 
       {scannerOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="qr-dialog-title"><div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:p-7"><div className="flex items-start justify-between"><div><h2 id="qr-dialog-title" className="text-lg font-bold">{transferMode ? "Transfer points" : "Scan to connect"}</h2><p className="mt-1 text-sm text-muted-foreground">{transferMode ? "Scan your friend's QR code to choose a recipient." : "Scanning a resident's QR code connects you as friends right away."}</p></div><button type="button" aria-label="Close scanner" onClick={() => setScannerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button></div><div id="resident-qr-reader" className="mt-5 min-h-60 overflow-hidden rounded-2xl bg-slate-950" />{scannerError && <p role="alert" className="mt-3 rounded-xl bg-danger/10 p-3 text-sm text-danger">{scannerError}</p>}<p className="mt-3 text-center text-xs text-muted-foreground">Allow camera access and hold the QR code inside the frame.</p></div></div>}
 

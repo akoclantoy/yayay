@@ -267,11 +267,11 @@ export function PickupMessenger({
   return (
     <div className={cn(
       "mx-auto grid max-w-7xl gap-5 lg:grid-cols-[340px_minmax(0,1fr)]",
-      fullScreen && "h-full min-h-0 w-full max-w-none grid-cols-1 gap-0 lg:grid-cols-[320px_minmax(0,1fr)]",
+      fullScreen && "h-full min-h-0 w-full max-w-none grid-cols-1 grid-rows-[minmax(0,1fr)] gap-0 lg:grid-cols-[320px_minmax(0,1fr)] lg:grid-rows-1",
     )}>
       <Card className={cn(
         "overflow-hidden",
-        fullScreen && "flex min-h-0 flex-col rounded-none border-0 shadow-none lg:border-r",
+        fullScreen && "flex h-full min-h-0 flex-col rounded-none border-0 shadow-none lg:border-r",
       )}>
         <CardHeader className="bg-gradient-to-br from-emerald-950 to-emerald-800 text-white">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-lime-200">Pickup support</p>
@@ -359,11 +359,11 @@ export function PickupMessenger({
 
       <Card className={cn(
         "flex min-h-[560px] flex-col overflow-hidden",
-        fullScreen && "min-h-0 rounded-none border-0 shadow-none",
+        fullScreen && "h-full min-h-0 rounded-none border-0 shadow-none",
       )}>
         {activeConversation ? (
           <>
-            <CardHeader className="border-b bg-card/80">
+            <CardHeader className="shrink-0 border-b bg-card/80">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex shrink-0 flex-col items-center gap-1">
@@ -434,8 +434,8 @@ export function PickupMessenger({
                 </div>
               )}
             </CardHeader>
-            <CardContent className="flex flex-1 flex-col p-0">
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+            <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
                 {messages.length === 0 ? (
                   <div className="grid h-full min-h-48 place-items-center text-center text-sm text-muted-foreground">
                     <div><MessageCircle className="mx-auto mb-2 h-8 w-8 opacity-40" />Say hello about this pickup.</div>
