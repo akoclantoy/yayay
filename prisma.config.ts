@@ -6,12 +6,21 @@ import { defineConfig } from "prisma/config";
 config({ path: ".env.local" });
 config();
 
+function getPrismaDatabaseUrl() {
+  const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+  if (!connectionString) return undefined;
+
+  const url = new URL(connectionString);
+  url.searchParams.set("schema", "ecorewards");
+  return url.toString();
+}
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
+    url: getPrismaDatabaseUrl(),
   },
 });

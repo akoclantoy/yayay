@@ -43,6 +43,9 @@ Required variables:
 | `AUTH_SECRET` | Random secret — run `openssl rand -base64 32` |
 
 `DIRECT_URL` is only needed when `DATABASE_URL` uses a `prisma+postgres://` URL.
+EcoRewards stores application tables in the dedicated PostgreSQL `ecorewards`
+schema; Prisma setup targets it automatically, leaving Supabase's `public` and
+`auth` schemas untouched.
 
 Before registering an account, make sure PostgreSQL is running and the database
 in `DATABASE_URL` exists. Check the connection with:

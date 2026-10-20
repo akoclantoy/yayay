@@ -52,6 +52,21 @@ if (databaseUrl.includes("user:password@localhost")) {
   process.exit(0);
 }
 
+const schemaClient = new pg.Client({
+  connectionString: realtimeDatabaseUrl,
+  application_name: "ecorewards-schema-setup",
+});
+
+try {
+  await schemaClient.connect();
+  await schemaClient.query("CREATE SCHEMA IF NOT EXISTS ecorewards");
+} catch (error) {
+  console.error("[setup-db] Could not create or access the ecorewards database schema:", error);
+  throw error;
+} finally {
+  await schemaClient.end();
+}
+
 console.log("[setup-db] Applying Prisma schema...");
 // Prisma 7 does not accept --skip-generate in this command; schema generation
 // already happens in the build step, so we only need to push the schema here.
@@ -60,7 +75,7 @@ try {
   console.log("[setup-db] Prisma schema is ready.");
 } catch (error) {
   console.error(
-    "[setup-db] Prisma schema push failed. Verify that DIRECT_URL is reachable and DATABASE_URL is set for runtime traffic."
+    "[setup-db] Prisma schema push to ecorewards failed. Verify that DIRECT_URL is reachable, the database role can create tables in ecorewards, and DATABASE_URL is set for runtime traffic."
   );
   throw error;
 }
