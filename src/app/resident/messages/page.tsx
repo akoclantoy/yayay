@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { PickupMessenger } from "@/components/messaging/pickup-messenger";
+import { ResidentMessenger } from "@/components/messaging/resident-messenger";
 
 export default async function ResidentMessagesPage() {
   const session = await auth();
@@ -9,5 +9,10 @@ export default async function ResidentMessagesPage() {
     redirect(session.user.role === "ADMIN" ? "/admin" : "/staff");
   }
 
-  return <PickupMessenger userId={session.user.id} />;
+  return (
+    <ResidentMessenger
+      residentName={session.user.name ?? "Resident"}
+      residentImage={session.user.image ?? null}
+    />
+  );
 }
