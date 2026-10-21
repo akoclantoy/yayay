@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 import { LogOut } from "lucide-react";
@@ -17,15 +16,14 @@ export function SignOutButton({
   compact?: boolean;
   className?: string;
 }) {
-  const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
 
   async function handleSignOut() {
     if (signingOut) return;
     setSigningOut(true);
     try {
-      await signOut({ redirect: false, redirectTo: "/" });
-      router.replace("/");
+      await signOut({ redirect: false, redirectTo: "https://yayay-8tut.onrender.com/" });
+      window.location.replace("https://yayay-8tut.onrender.com/");
     } catch (error) {
       console.error("[auth] Could not sign out:", error);
       toast.error("Sign out failed. Please try again.");
