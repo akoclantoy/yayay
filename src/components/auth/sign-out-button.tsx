@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { signOut } from "next-auth/react";
-import { toast } from "sonner";
+import { useFormStatus } from "react-dom";
 import { LogOut } from "lucide-react";
+import { signOutToHome } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -16,26 +15,28 @@ export function SignOutButton({
   compact?: boolean;
   className?: string;
 }) {
-  const [signingOut, setSigningOut] = useState(false);
+  return (
+    <form action={signOutToHome}>
+      <SignOutSubmitButton collapsed={collapsed} compact={compact} className={className} />
+    </form>
+  );
+}
 
-  async function handleSignOut() {
-    if (signingOut) return;
-    setSigningOut(true);
-    try {
-      await signOut({ redirect: false, redirectTo: "https://yayay-8tut.onrender.com/" });
-      window.location.replace("https://yayay-8tut.onrender.com/");
-    } catch (error) {
-      console.error("[auth] Could not sign out:", error);
-      toast.error("Sign out failed. Please try again.");
-      setSigningOut(false);
-    }
-  }
-
-  const label = signingOut ? "Signing out" : "Sign out";
+function SignOutSubmitButton({
+  collapsed,
+  compact,
+  className,
+}: {
+  collapsed: boolean;
+  compact: boolean;
+  className?: string;
+}) {
+  const { pending } = useFormStatus();
+  const label = pending ? "Signing out" : "Sign out";
 
   return (
     <Button
-      type="button"
+      type="submit"
       variant="ghost"
       size="sm"
       className={cn(
@@ -47,13 +48,12 @@ export function SignOutButton({
             : "mt-2 w-full justify-start",
         className,
       )}
-      onClick={() => void handleSignOut()}
-      disabled={signingOut}
+      disabled={pending}
       aria-label={label}
       title={label}
     >
       <LogOut className="h-4 w-4" />
-      {!collapsed && !compact && (signingOut ? "Signing out..." : "Sign out")}
+      {!collapsed && !compact && (pending ? "Signing out..." : "Sign out")}
     </Button>
   );
 }
