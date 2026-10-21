@@ -40,13 +40,6 @@ type CommunityStats = {
   materialBreakdown: MaterialSeries[];
 };
 
-type ActivityBucket = {
-  startDay: string;
-  endDay: string;
-  weightKg: number;
-  records: number;
-};
-
 const numberFormat = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 0,
 });
@@ -61,27 +54,6 @@ function formatDate(day: string) {
     day: "numeric",
     timeZone: "UTC",
   });
-}
-
-function groupActivityByNineDays(days: DailyImpact[]): ActivityBucket[] {
-  const buckets: ActivityBucket[] = [];
-
-  for (let index = 0; index < days.length; index += 9) {
-    const group = days.slice(index, index + 9);
-    if (group.length === 0) continue;
-
-    buckets.push({
-      startDay: group[0].day,
-      endDay: group[group.length - 1].day,
-      weightKg: group.reduce(
-        (total, day) => total + day.totalWeightKg,
-        0
-      ),
-      records: group.reduce((total, day) => total + day.records, 0),
-    });
-  }
-
-  return buckets;
 }
 
 function monthChangeLabel(change: number | null) {
@@ -121,12 +93,9 @@ export function LandingCommunityImpact() {
     return () => controller.abort();
   }, []);
 
-  const activity = useMemo(
-    () => groupActivityByNineDays(stats?.dailyImpact ?? []),
-    [stats]
-  );
+  const activity = useMemo(() => stats?.dailyImpact ?? [], [stats]);
   const maxActivity = Math.max(
-    ...activity.map((bucket) => bucket.weightKg),
+    ...activity.map((day) => day.totalWeightKg),
     1
   );
   const monthlyChange = stats?.monthlyChangePercent ?? 0;
@@ -245,28 +214,28 @@ export function LandingCommunityImpact() {
             stats.materials.length > 0 ? (
               <>
                 <div
-                  aria-label="Verified recycling weight in ten consecutive nine-day periods"
-                  className="absolute inset-x-6 bottom-[82px] flex h-[118px] items-end gap-2 border-b border-[#c1d7ce]/90 sm:inset-x-8 sm:gap-2.5"
+                  aria-label="Verified recycling weight by day over the last 90 days"
+                  className="absolute inset-x-6 bottom-[82px] flex h-[118px] items-end gap-0.5 border-b border-[#c1d7ce]/90 sm:inset-x-8 sm:gap-1"
                   role="img"
                 >
-                  {activity.map((bucket, index) => (
+                  {activity.map((day, index) => (
                     <div
-                      key={bucket.startDay}
-                      aria-label={`${formatDate(bucket.startDay)} to ${formatDate(bucket.endDay)}: ${preciseNumberFormat.format(bucket.weightKg)} kilograms in ${bucket.records} verified collections`}
-                      className="min-w-0 flex-1 rounded-t-[6px] bg-[#86b440] transition-colors hover:bg-[#a1ce56]"
+                      key={day.day}
+                      aria-label={`${formatDate(day.day)}: ${preciseNumberFormat.format(day.totalWeightKg)} kilograms in ${day.records} verified collections`}
+                      className="min-w-0 flex-1 rounded-t-[2px] bg-[#86b440] transition-colors hover:bg-[#a1ce56]"
                       style={{
                         height: `${Math.max(
-                          (bucket.weightKg / maxActivity) * 100,
-                          bucket.weightKg > 0 ? 8 : 0
+                          (day.totalWeightKg / maxActivity) * 100,
+                          day.totalWeightKg > 0 ? 8 : 0
                         )}%`,
                         opacity: 0.5 + (index / Math.max(activity.length - 1, 1)) * 0.5,
                       }}
-                      title={`${formatDate(bucket.startDay)}–${formatDate(bucket.endDay)}: ${preciseNumberFormat.format(bucket.weightKg)} kg recycled · ${bucket.records} verified collections`}
+                      title={`${formatDate(day.day)}: ${preciseNumberFormat.format(day.totalWeightKg)} kg recycled · ${day.records} verified collections`}
                     />
                   ))}
                 </div>
                 <p className="absolute bottom-[61px] left-6 text-[10px] text-[#c1d7ce]/80 sm:left-8">
-                  Each bar = 9 days · hover a bar for its total
+                  Each bar = 1 day · hover a bar for its total
                 </p>
               </>
             ) : (

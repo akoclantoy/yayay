@@ -19,7 +19,7 @@ type PublicStats = {
   averageResidentScore: number | null;
   monthlyChangePercent: number | null;
   verifiedRecords: number;
-  dailyImpact: { totalWeightKg: number }[];
+  dailyImpact: { day: string; totalWeightKg: number }[];
 };
 
 const numberFormat = new Intl.NumberFormat("en-PH", {
@@ -56,13 +56,9 @@ export function LandingHero() {
 
   const activity = useMemo(() => {
     if (!stats) return [];
-    return Array.from({ length: 10 }, (_, index) =>
-      stats.dailyImpact
-        .slice(index * 9, (index + 1) * 9)
-        .reduce((total, day) => total + day.totalWeightKg, 0)
-    );
+    return stats.dailyImpact;
   }, [stats]);
-  const maxActivity = Math.max(...activity, 1);
+  const maxActivity = Math.max(...activity.map((day) => day.totalWeightKg), 1);
   const averageScore =
     stats?.averageResidentScore === null ||
     stats?.averageResidentScore === undefined
@@ -163,21 +159,24 @@ export function LandingHero() {
                 </div>
                 <div className="rounded-2xl bg-[#e8b34b] p-3 text-[#3c2a0b]"><Sparkles className="h-5 w-5" /></div>
               </div>
-              <div className="mb-7 flex h-32 items-end gap-2 border-b border-white/15 pb-2">
-                {activity.map((weight, index) => (
+              <div className="mb-2 flex h-32 items-end gap-0.5 border-b border-white/15 pb-2">
+                {activity.map((day, index) => (
                   <div
-                    key={index}
-                    aria-label={`Nine-day period ${index + 1}: ${numberFormat.format(weight)} kilograms`}
-                    className="flex-1 rounded-t-md bg-[#8dbf45]"
+                    key={day.day}
+                    aria-label={`${new Date(`${day.day}T00:00:00Z`).toLocaleDateString("en-PH", { month: "short", day: "numeric", timeZone: "UTC" })}: ${numberFormat.format(day.totalWeightKg)} kilograms`}
+                    className="min-w-0 flex-1 rounded-t-sm bg-[#8dbf45] transition-colors hover:bg-[#b4d88c]"
                     role="img"
                     style={{
-                      height: `${Math.max((weight / maxActivity) * 100, weight > 0 ? 8 : 0)}%`,
-                      opacity: 0.45 + index * 0.05,
+                      height: `${Math.max((day.totalWeightKg / maxActivity) * 100, day.totalWeightKg > 0 ? 8 : 0)}%`,
+                      opacity: 0.45 + (index / Math.max(activity.length - 1, 1)) * 0.5,
                     }}
-                    title={`${numberFormat.format(weight)} kg in this nine-day period`}
+                    title={`${new Date(`${day.day}T00:00:00Z`).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}: ${numberFormat.format(day.totalWeightKg)} kg`}
                   />
                 ))}
               </div>
+              <p className="mb-3 text-[10px] text-white/65">
+                Each bar = 1 day · hover a bar for its total
+              </p>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-white/65">Last 90 days</span>
                 <span className="flex items-center gap-2 font-medium">
