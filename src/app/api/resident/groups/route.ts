@@ -22,7 +22,8 @@ const updateSchema = z.object({
 }).refine((input) => input.action !== "react" || Boolean(input.messageId && input.reaction));
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ALLOWED_MEDIA_IMAGE_TYPES = new Set([...ALLOWED_IMAGE_TYPES, "image/gif"]);
 const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
 const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 
@@ -173,7 +174,7 @@ export async function POST(request: Request) {
       }
       const file = fileValue instanceof File ? fileValue : null;
       if (file && !(
-        (ALLOWED_IMAGE_TYPES.has(file.type) && file.size > 0 && file.size <= MAX_IMAGE_BYTES) ||
+        (ALLOWED_MEDIA_IMAGE_TYPES.has(file.type) && file.size > 0 && file.size <= MAX_IMAGE_BYTES) ||
         (ALLOWED_VIDEO_TYPES.has(file.type) && file.size > 0 && file.size <= MAX_VIDEO_BYTES)
       )) {
         return NextResponse.json({ error: "Choose an image up to 5 MB or a video up to 25 MB (MP4, WebM, or MOV)." }, { status: 400 });
