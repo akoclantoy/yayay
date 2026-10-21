@@ -100,6 +100,7 @@ export function GroupChatPanel({
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [working, setWorking] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
@@ -141,13 +142,17 @@ export function GroupChatPanel({
       const myMember = group.members.find((member) => member.userId === residentId);
       if (latest && latest.senderId !== residentId &&
         (!myMember?.lastReadAt || new Date(latest.createdAt) > new Date(myMember.lastReadAt))) {
-        await requestJson("/api/resident/groups", {
+        void requestJson("/api/resident/groups", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "read", groupId: selectedGroupId }),
+        }).catch((cause: unknown) => {
+          console.error("[group-chat] Failed to mark group as read:", cause);
         });
       }
-      await loadGroups();
+      setGroups((current) => current.map((item) =>
+        item.id === selectedGroupId ? { ...item, unread: false } : item,
+      ));
     };
     void refresh().catch((cause: unknown) => {
       if (active) setError(cause instanceof Error ? cause.message : "Unable to refresh this group.");
@@ -161,7 +166,7 @@ export function GroupChatPanel({
       active = false;
       window.clearInterval(timer);
     };
-  }, [loadDetails, loadGroups, residentId, selectedGroupId]);
+  }, [loadDetails, residentId, selectedGroupId]);
 
   const groupFriends = useMemo(() => friends.filter((friend) =>
     memberIds.includes(friend.id),
@@ -198,31 +203,35 @@ export function GroupChatPanel({
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedGroupId || (!message.trim() && !attachment)) return;
-    setWorking(true);
+    setSendingMessage(true);
     setError(null);
     try {
-      if (attachment) {
+      const result = attachment
+        ? await (() => {
         const form = new FormData();
         form.set("action", "message");
         form.set("groupId", selectedGroupId);
         form.set("content", message);
         form.set("media", attachment);
-        await requestJson("/api/resident/groups", { method: "POST", body: form });
-      } else {
-        await requestJson("/api/resident/groups", {
+        return requestJson<{ message: GroupMessage }>("/api/resident/groups", { method: "POST", body: form });
+      })()
+        : await requestJson<{ message: GroupMessage }>("/api/resident/groups", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "message", groupId: selectedGroupId, content: message }),
         });
-      }
+      setDetails((current) => current
+        ? { ...current, messages: [...current.messages, result.message] }
+        : current);
+      setGroups((current) => current.map((item) => item.id === selectedGroupId
+        ? { ...item, unread: false, lastMessage: result.message }
+        : item));
       setMessage("");
       setAttachment(null);
-      await loadDetails(selectedGroupId);
-      await loadGroups();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to send message.");
     } finally {
-      setWorking(false);
+      setSendingMessage(false);
     }
   }
 
@@ -252,14 +261,42 @@ export function GroupChatPanel({
   async function reactToMessage(messageId: string, kind: string) {
     if (!selectedGroupId) return;
     setError(null);
+    const previous = details?.messages.find((item) => item.id === messageId)?.reactions ?? [];
+    const currentReaction = previous.find((item) => item.userId === residentId);
+    const optimistic = currentReaction?.kind === kind
+      ? previous.filter((item) => item.userId !== residentId)
+      : [...previous.filter((item) => item.userId !== residentId), { userId: residentId, kind }];
+    setDetails((current) => current
+      ? {
+          ...current,
+          messages: current.messages.map((item) =>
+            item.id === messageId ? { ...item, reactions: optimistic } : item,
+          ),
+        }
+      : current);
     try {
-      await requestJson("/api/resident/groups", {
+      const result = await requestJson<{ reactions: { userId: string; kind: string }[] }>("/api/resident/groups", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "react", groupId: selectedGroupId, messageId, reaction: kind }),
       });
-      await loadDetails(selectedGroupId);
+      setDetails((current) => current
+        ? {
+            ...current,
+            messages: current.messages.map((item) =>
+              item.id === messageId ? { ...item, reactions: result.reactions } : item,
+            ),
+          }
+        : current);
     } catch (cause) {
+      setDetails((current) => current
+        ? {
+            ...current,
+            messages: current.messages.map((item) =>
+              item.id === messageId ? { ...item, reactions: previous } : item,
+            ),
+          }
+        : current);
       setError(cause instanceof Error ? cause.message : "Unable to react to this message.");
     }
   }
@@ -344,7 +381,7 @@ export function GroupChatPanel({
             }} />
             <button type="button" title="Attach an image or video" aria-label="Attach an image or video" onClick={() => mediaInputRef.current?.click()} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Paperclip className="h-5 w-5" /></button>
             <textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={1} placeholder={`Message ${selectedGroup.name}…`} className="max-h-28 min-h-11 flex-1 resize-y rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10" />
-            <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={(!message.trim() && !attachment) || working} aria-label="Send group message"><Send className="h-4 w-4" /></Button>
+            <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={(!message.trim() && !attachment) || sendingMessage} aria-label="Send group message"><Send className="h-4 w-4" /></Button>
             </div>
           </form>
         </section>

@@ -586,7 +586,17 @@ export async function POST(request: Request) {
           mediaType: file?.type,
           mediaPublicId: uploaded?.publicId,
         },
-        select: { id: true, senderId: true, content: true, mediaUrl: true, mediaType: true, createdAt: true },
+        select: {
+          id: true,
+          senderId: true,
+          content: true,
+          mediaUrl: true,
+          mediaType: true,
+          systemMessage: true,
+          editedAt: true,
+          createdAt: true,
+          reactions: { select: { userId: true, kind: true } },
+        },
       });
       await tx.directConversation.update({
         where: { id: conversation.id },

@@ -38,6 +38,7 @@ import { PickupMessenger } from "@/components/messaging/pickup-messenger";
 import { cn } from "@/lib/utils";
 import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
 import { getSharedResidentQrCode } from "@/lib/resident-social";
+import { getCachedMessengerData, loadCachedMessengerData, setCachedMessengerData } from "@/components/messaging/messenger-cache";
 
 type Resident = { id: string; name: string | null; image: string | null; qrCode?: string; online?: boolean };
 type Friend = Resident & { createdAt?: string };
@@ -183,6 +184,7 @@ export function ResidentMessenger({
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [profile, setProfile] = useState<FriendProfile | null>(null);
@@ -230,45 +232,82 @@ export function ResidentMessenger({
     return data?.friends.find((friend) => friend.id === activeFriendId) ?? null;
   }, [activeConversationId, activeFriendId, data?.friends, details]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = true) => {
     setError(null);
-    const [friendsResponse, conversationsResponse] = await Promise.all([
-      requestJson<MessengerData>("/api/resident/friends"),
-      requestJson<{ conversations: Conversation[] }>("/api/resident/direct-messages"),
-    ]);
-    setData(friendsResponse);
-    setConversations(conversationsResponse.conversations);
-  }, []);
-
-  const loadDetails = useCallback(async (conversationId: string) => {
-    const response = await requestJson<{ conversation: ConversationDetails }>(
-      `/api/resident/direct-messages?conversationId=${encodeURIComponent(conversationId)}`,
+    const result = await loadCachedMessengerData(
+      `messenger-bootstrap:${residentId}`,
+      async () => {
+        const [friendsResponse, conversationsResponse] = await Promise.all([
+          requestJson<MessengerData>("/api/resident/friends"),
+          requestJson<{ conversations: Conversation[] }>("/api/resident/direct-messages"),
+        ]);
+        return { friends: friendsResponse, conversations: conversationsResponse.conversations };
+      },
+      force,
     );
-    setDetails(response.conversation);
-    return response.conversation;
-  }, []);
+    setData(result.friends);
+    setConversations(result.conversations);
+  }, [residentId]);
+
+  const prefetchConversation = useCallback((conversationId: string) => {
+    void loadCachedMessengerData(
+      `messenger-conversation:${residentId}:${conversationId}`,
+      async () => {
+        const response = await requestJson<{ conversation: ConversationDetails }>(
+          `/api/resident/direct-messages?conversationId=${encodeURIComponent(conversationId)}`,
+        );
+        return response.conversation;
+      },
+    ).catch((cause: unknown) => {
+      console.error("[resident-messenger] Could not prefetch conversation:", cause);
+    });
+  }, [residentId]);
+
+  const loadDetails = useCallback(async (conversationId: string, force = false) => {
+    const cached = getCachedMessengerData<ConversationDetails>(
+      `messenger-conversation:${residentId}:${conversationId}`,
+    );
+    if (cached) setDetails(cached);
+    const conversation = await loadCachedMessengerData(
+      `messenger-conversation:${residentId}:${conversationId}`,
+      async () => {
+        const response = await requestJson<{ conversation: ConversationDetails }>(
+          `/api/resident/direct-messages?conversationId=${encodeURIComponent(conversationId)}`,
+        );
+        return response.conversation;
+      },
+      force,
+    );
+    setDetails(conversation);
+    return conversation;
+  }, [residentId]);
 
   const refreshOpenConversation = useCallback(async (conversationId: string) => {
-    const conversation = await loadDetails(conversationId);
+    const conversation = await loadDetails(conversationId, true);
+    setConversations((current) => current.map((item) =>
+      item.id === conversationId ? { ...item, unread: false } : item,
+    ));
     const latestMessage = conversation.messages.at(-1);
     if (
       latestMessage &&
       latestMessage.senderId !== residentId &&
       (!conversation.readAt || new Date(latestMessage.createdAt) > new Date(conversation.readAt))
     ) {
-      const result = await requestJson<{ readAt: string }>("/api/resident/direct-messages", {
+      void requestJson<{ readAt: string }>("/api/resident/direct-messages", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "read", conversationId }),
+      }).then((result) => {
+        setDetails((current) =>
+          current?.id === conversationId
+            ? { ...current, readAt: result.readAt }
+            : current,
+        );
+      }).catch((cause: unknown) => {
+        console.error("[resident-messenger] Failed to mark conversation as read:", cause);
       });
-      setDetails((current) =>
-        current?.id === conversationId
-          ? { ...current, readAt: result.readAt }
-          : current,
-      );
     }
-    await refresh();
-  }, [loadDetails, refresh, residentId]);
+  }, [loadDetails, residentId]);
 
   const lookupQr = useCallback(async (qrCode: string) => {
     try {
@@ -325,7 +364,7 @@ export function ResidentMessenger({
     let active = true;
     const initialLoad = async () => {
       try {
-        await refresh();
+        await refresh(false);
       } catch (cause) {
         if (active) setError(getErrorMessage(cause));
       } finally {
@@ -401,8 +440,10 @@ export function ResidentMessenger({
   }, [search, tab]);
 
   useEffect(() => {
+    let refreshInFlight = false;
     const updateMessages = () => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible" || refreshInFlight) return;
+      refreshInFlight = true;
       const update = async () => {
         if (activeConversationId) {
           await refreshOpenConversation(activeConversationId);
@@ -412,6 +453,8 @@ export function ResidentMessenger({
       };
       void update().catch((cause: unknown) => {
         setError(getErrorMessage(cause));
+      }).finally(() => {
+        refreshInFlight = false;
       });
     };
     return subscribeToRealtimeChanges(updateMessages);
@@ -491,7 +534,6 @@ export function ResidentMessenger({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId, action }),
       });
-      await refresh();
       if (residentId) {
         setDirectoryResidents((current) => current.map((resident) =>
           resident.id === residentId
@@ -503,6 +545,7 @@ export function ResidentMessenger({
             : resident,
         ));
       }
+      void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
       setNotice(action === "ACCEPT" ? "You are now friends." : "Friend request declined.");
     } catch (cause) {
       setError(getErrorMessage(cause));
@@ -534,7 +577,7 @@ export function ResidentMessenger({
             : resident,
         ));
       }
-      await refresh();
+      void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
       setNotice("Friend request sent.");
     } catch (cause) {
       setError(getErrorMessage(cause));
@@ -552,7 +595,6 @@ export function ResidentMessenger({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId }),
       });
-      await refresh();
       setProfile((current) => current ? { ...current, outgoingRequest: null } : current);
       if (residentId) {
         setDirectoryResidents((current) => current.map((resident) =>
@@ -561,6 +603,7 @@ export function ResidentMessenger({
             : resident,
         ));
       }
+      void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
       setNotice("Friend request cancelled.");
     } catch (cause) {
       setError(getErrorMessage(cause));
@@ -572,7 +615,7 @@ export function ResidentMessenger({
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeFriend || (!messageText.trim() && !attachmentFile)) return;
-    setWorking(true);
+    setSendingMessage(true);
     setError(null);
     try {
       const response = attachmentFile
@@ -581,12 +624,12 @@ export function ResidentMessenger({
             form.set("friendId", activeFriend.id);
             form.set("content", messageText);
             form.set("media", attachmentFile);
-            return requestJson<{ conversation: { id: string } }>("/api/resident/direct-messages", {
+            return requestJson<{ conversation: { id: string }; message: Message }>("/api/resident/direct-messages", {
               method: "POST",
               body: form,
             });
           })()
-        : await requestJson<{ conversation: { id: string } }>("/api/resident/direct-messages", {
+        : await requestJson<{ conversation: { id: string }; message: Message }>("/api/resident/direct-messages", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ friendId: activeFriend.id, content: messageText }),
@@ -595,21 +638,38 @@ export function ResidentMessenger({
       setAttachmentFile(null);
       setActiveFriendId(activeFriend.id);
       setActiveConversationId(response.conversation.id);
-      await refresh();
-      await loadDetails(response.conversation.id);
+      const sameConversation = details?.id === response.conversation.id;
+      const updated = {
+        id: response.conversation.id,
+        theme: sameConversation ? details.theme : "forest",
+        backgroundImageUrl: sameConversation ? details.backgroundImageUrl : null,
+        friend: activeFriend,
+        messages: [
+          ...(sameConversation ? details.messages : []),
+          response.message,
+        ],
+        readAt: sameConversation ? details.readAt : null,
+        friendReadAt: sameConversation ? details.friendReadAt : null,
+      };
+      setCachedMessengerData(
+        `messenger-conversation:${residentId}:${response.conversation.id}`,
+        updated,
+      );
+      setDetails(updated);
+      void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
-      setWorking(false);
+      setSendingMessage(false);
     }
   }
 
   async function openForwardPicker(type: "direct" | "group", messageId: string) {
     setError(null);
+    setForwardSource({ type, messageId });
     try {
       const result = await requestJson<{ groups: ForwardGroup[] }>("/api/resident/groups");
       setForwardGroups(result.groups);
-      setForwardSource({ type, messageId });
     } catch (cause) {
       setError(getErrorMessage(cause));
     }
@@ -632,8 +692,7 @@ export function ResidentMessenger({
       });
       setForwardSource(null);
       setNotice("Message forwarded.");
-      await refresh();
-      if (destinationType === "direct" && activeConversationId) await refreshOpenConversation(activeConversationId);
+      void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
@@ -685,7 +744,7 @@ export function ResidentMessenger({
         : current);
       setEditMessageId(null);
       setEditMessageText("");
-      await refresh();
+      void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
@@ -706,7 +765,7 @@ export function ResidentMessenger({
       setDetails((current) => current
         ? { ...current, messages: current.messages.filter((message) => message.id !== messageId) }
         : current);
-      await refresh();
+      void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
@@ -716,6 +775,22 @@ export function ResidentMessenger({
 
   async function toggleMessageReaction(messageId: string, kind: ReactionKind) {
     setError(null);
+    const previousReactions = details?.messages.find((message) => message.id === messageId)?.reactions ?? [];
+    const existing = previousReactions.find((reaction) => reaction.userId === residentId);
+    const optimisticReactions = existing?.kind === kind
+      ? previousReactions.filter((reaction) => reaction.userId !== residentId)
+      : [
+          ...previousReactions.filter((reaction) => reaction.userId !== residentId),
+          { userId: residentId, kind },
+        ];
+    setDetails((current) => current
+      ? {
+          ...current,
+          messages: current.messages.map((message) =>
+            message.id === messageId ? { ...message, reactions: optimisticReactions } : message,
+          ),
+        }
+      : current);
     try {
       const result = await requestJson<{ reactions: Reaction[] }>("/api/resident/direct-messages", {
         method: "PATCH",
@@ -730,8 +805,15 @@ export function ResidentMessenger({
             ),
           }
         : current);
-      await refresh();
     } catch (cause) {
+      setDetails((current) => current
+          ? {
+              ...current,
+              messages: current.messages.map((message) =>
+                message.id === messageId ? { ...message, reactions: previousReactions } : message,
+              ),
+            }
+          : current);
       setError(getErrorMessage(cause));
     }
   }
@@ -820,8 +902,8 @@ export function ResidentMessenger({
       setDetails(null);
       setTab("inbox");
       setProfile(null);
-      await refresh();
-      await loadDetails(result.conversationId);
+      void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
+      void loadDetails(result.conversationId).catch((cause: unknown) => setError(getErrorMessage(cause)));
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
@@ -891,7 +973,7 @@ export function ResidentMessenger({
       setTransferMode(true);
       setTransferConfirm(false);
       setTransferAmount("");
-      await loadTransferBalance();
+      void loadTransferBalance();
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
@@ -915,8 +997,8 @@ export function ResidentMessenger({
       await requestJson("/api/resident/chat-theme", { method: "PATCH", body: form });
       setBackgroundFile(null);
       setThemeOpen(false);
-      await loadDetails(activeConversationId);
-      await refresh();
+      void loadDetails(activeConversationId).catch((cause: unknown) => setError(getErrorMessage(cause)));
+      void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
       setNotice("Shared conversation appearance updated.");
     } catch (cause) {
       setError(getErrorMessage(cause));
@@ -943,12 +1025,12 @@ export function ResidentMessenger({
           ...(activeConversationId ? { conversationId: activeConversationId } : {}),
         }),
       });
-      await refresh();
       setActiveFriendId(null);
       setActiveConversationId(null);
       setDetails(null);
       setSettingsOpen(false);
       setSettingsAction(null);
+      void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
       setNotice(
         action === "unfriend"
           ? `${displayName(activeFriend)} was removed from your friends.`
@@ -967,7 +1049,11 @@ export function ResidentMessenger({
     const conversation = conversations.find((item) => item.friend.id === friend.id);
     setActiveFriendId(friend.id);
     setActiveConversationId(conversation?.id ?? null);
-    setDetails(null);
+    const cached = conversation?.id
+      ? getCachedMessengerData<ConversationDetails>(`messenger-conversation:${residentId}:${conversation.id}`)
+      : null;
+    setDetails(cached);
+    if (conversation?.id && !cached) prefetchConversation(conversation.id);
     setTab("inbox");
   }
 
@@ -1004,7 +1090,13 @@ export function ResidentMessenger({
         conversations.find((conversation) => conversation.friend.id === friend.id)?.id ??
         null,
     );
-    setDetails(null);
+    const conversationId = friend.conversationId ??
+      conversations.find((conversation) => conversation.friend.id === friend.id)?.id ?? null;
+    const cached = conversationId
+      ? getCachedMessengerData<ConversationDetails>(`messenger-conversation:${residentId}:${conversationId}`)
+      : null;
+    setDetails(cached);
+    if (conversationId && !cached) prefetchConversation(conversationId);
   }
 
   const currentDetails = details?.id === activeConversationId ? details : null;
@@ -1077,7 +1169,12 @@ export function ResidentMessenger({
               ) : tab === "inbox" ? (
                 <div>
                   {filteredConversations.length ? filteredConversations.map((item) => (
-                    <button key={item.friend.id} type="button" onClick={() => { setActiveFriendId(item.friend.id); setActiveConversationId(item.id); setDetails(null); setSettingsOpen(false); }} className={cn("flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-muted/60", activeConversationId === item.id && "bg-primary/8")}>
+                    <button key={item.friend.id} type="button" onPointerEnter={() => item.id && prefetchConversation(item.id)} onFocus={() => item.id && prefetchConversation(item.id)} onClick={() => {
+                      setActiveFriendId(item.friend.id);
+                      setActiveConversationId(item.id);
+                      setDetails(item.id ? getCachedMessengerData<ConversationDetails>(`messenger-conversation:${residentId}:${item.id}`) : null);
+                      setSettingsOpen(false);
+                    }} className={cn("flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-muted/60", activeConversationId === item.id && "bg-primary/8")}>
                       <span className="relative shrink-0">
                         <ProfileAvatar resident={item.friend} />
                         {item.unread && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-primary" aria-label="Unread message" />}
@@ -1484,7 +1581,7 @@ export function ResidentMessenger({
                     <button type="button" title="Attach an image or video" aria-label="Attach an image or video" onClick={() => mediaInputRef.current?.click()} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Paperclip className="h-5 w-5" /></button>
                     <button type="button" title="Choose a shared conversation theme" onClick={() => setThemeOpen((open) => !open)} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary/10"><ImagePlus className="h-5 w-5" /></button>
                     <textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={1} placeholder={`Message ${displayName(activeFriend)}…`} className="max-h-28 min-h-11 flex-1 resize-y rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/10" />
-                    <Button type="submit" size="icon" className="mb-0.5 h-10 w-10 shrink-0 rounded-full" disabled={(!messageText.trim() && !attachmentFile) || working} aria-label="Send message"><Send className="h-4 w-4" /></Button>
+                    <Button type="submit" size="icon" className="mb-0.5 h-10 w-10 shrink-0 rounded-full" disabled={(!messageText.trim() && !attachmentFile) || sendingMessage} aria-label="Send message"><Send className="h-4 w-4" /></Button>
                   </div>
                 </form>
               </>

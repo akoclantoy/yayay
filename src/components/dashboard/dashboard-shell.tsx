@@ -36,6 +36,7 @@ import { APP_NAME, ROLE_LABELS, STAFF_PROFILE_IMAGE } from "@/lib/constants";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { prefetchMessengerData } from "@/components/messaging/messenger-cache";
 import { getInitials } from "@/lib/utils";
 import { FriendTogetherCelebration, type FriendTogetherProfile } from "@/components/messaging/friend-together-celebration";
 import type { UserRole } from "@/generated/prisma/enums";
@@ -119,6 +120,7 @@ export function DashboardShell({
   const [friendTogether, setFriendTogether] = useState<FriendTogetherProfile | null>(null);
   const processedFriendNotificationsRef = useRef(new Set<string>());
   const friendCelebrationTimerRef = useRef<number | null>(null);
+  const activityRefreshInFlightRef = useRef(false);
   const nav = NAV_BY_ROLE[role] ?? RESIDENT_NAV;
   const context = ROLE_CONTEXT[role] ?? ROLE_CONTEXT.RESIDENT;
   const profileImage =
@@ -197,14 +199,23 @@ export function DashboardShell({
     if (!session?.user?.id) return;
 
     const refresh = () => {
-      void refreshUnreadActivity().catch((error: unknown) => {
-        console.error("[dashboard] Could not refresh unread activity:", error);
-      });
+      if (activityRefreshInFlightRef.current) return;
+      activityRefreshInFlightRef.current = true;
+      const refreshes = [
+        refreshUnreadActivity().catch((error: unknown) => {
+          console.error("[dashboard] Could not refresh unread activity:", error);
+        }),
+      ];
       if (role === "RESIDENT") {
-        void refreshFriendTogether().catch((error: unknown) => {
-          console.error("[dashboard] Could not refresh friend connection activity:", error);
-        });
+        refreshes.push(
+          refreshFriendTogether().catch((error: unknown) => {
+            console.error("[dashboard] Could not refresh friend connection activity:", error);
+          }),
+        );
       }
+      void Promise.all(refreshes).finally(() => {
+        activityRefreshInFlightRef.current = false;
+      });
     };
     refresh();
     return subscribeToRealtimeChanges(refresh);
@@ -393,7 +404,13 @@ export function DashboardShell({
           </div>
           {role === "RESIDENT" && (
             <>
-              <Link href="/resident/messages" aria-label="Open messenger">
+              <Link
+                href="/resident/messages"
+                aria-label="Open messenger"
+                prefetch
+                onPointerEnter={() => prefetchMessengerData(session?.user?.id ?? "")}
+                onFocus={() => prefetchMessengerData(session?.user?.id ?? "")}
+              >
                 <Button variant="ghost" size="icon" className="text-muted-foreground">
                   <span className="relative">
                     <MessageCircle />
