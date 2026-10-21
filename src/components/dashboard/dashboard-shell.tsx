@@ -126,7 +126,6 @@ export function DashboardShell({
       ? STAFF_PROFILE_IMAGE
       : session?.user?.image;
   const activeItem = nav.find((item) => pathname === item.href || (item.href !== "/resident" && item.href !== "/staff" && item.href !== "/admin" && pathname.startsWith(item.href)));
-  const activeHref = activeItem?.href;
   const refreshUnreadActivity = useCallback(async () => {
     const response = await fetch("/api/notifications?unreadByLink=1", {
       cache: "no-store",
@@ -210,22 +209,6 @@ export function DashboardShell({
     refresh();
     return subscribeToRealtimeChanges(refresh);
   }, [refreshFriendTogether, refreshUnreadActivity, role, session?.user?.id]);
-
-  useEffect(() => {
-    if (!session?.user?.id || !activeHref) return;
-    void fetch("/api/notifications", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ link: activeHref }),
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error("Could not clear section activity.");
-        return refreshUnreadActivity();
-      })
-      .catch((error: unknown) => {
-        console.error("[dashboard] Could not mark section activity as viewed:", error);
-      });
-  }, [activeHref, refreshUnreadActivity, session?.user?.id]);
 
   if (role === "RESIDENT" && pathname === "/resident/messages") {
     return (
