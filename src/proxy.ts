@@ -2,7 +2,6 @@ import NextAuth from "next-auth";
 import { authConfig } from "@/auth.config";
 import { NextResponse } from "next/server";
 import type { UserRole } from "@/generated/prisma/enums";
-import { ROLE_DASHBOARD } from "@/lib/constants";
 
 const { auth } = NextAuth(authConfig);
 
@@ -14,8 +13,6 @@ const PUBLIC_PATHS = [
   "/reset-password",
   "/verify-email",
 ];
-
-const AUTH_PATHS = ["/login", "/register", "/forgot-password"];
 
 const ROLE_PREFIX: Record<UserRole, string> = {
   ADMIN: "/admin",
@@ -47,16 +44,6 @@ export default auth((req) => {
   }
 
   if (isPublic(path)) {
-    if (
-      isLoggedIn &&
-      AUTH_PATHS.includes(path)
-    ) {
-      const role = session.user.role ?? "RESIDENT";
-      const destination = ROLE_DASHBOARD[role];
-      if (destination !== path) {
-        return NextResponse.redirect(new URL(destination, req.url));
-      }
-    }
     return NextResponse.next();
   }
 

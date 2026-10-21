@@ -49,10 +49,10 @@ export default function HomePage() {
                 <span className="hidden sm:inline">Install app</span>
               </Button>
             </a>
-            <Link href="/login">
+            <Link href="/register">
               <Button variant="ghost" size="sm">Sign in</Button>
             </Link>
-            <Link href="/register">
+            <Link href="/login">
               <Button size="sm">
                 Get started
                 <ArrowRight className="h-4 w-4" />
@@ -83,7 +83,7 @@ export default function HomePage() {
                   Join your community&apos;s smart recycling program. Free to register, instant QR card, AI-powered guidance.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Link href="/register">
+                  <Link href="/login">
                     <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-white/90 w-full sm:w-auto">
                       Create free account
                       <ArrowRight className="h-4 w-4" />
