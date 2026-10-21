@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
   Recycle,
@@ -25,7 +25,6 @@ import {
   Users,
   Building2,
   Settings,
-  LogOut,
   Menu,
   X,
   ChevronLeft,
@@ -36,6 +35,7 @@ import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
 import { APP_NAME, ROLE_LABELS, STAFF_PROFILE_IMAGE } from "@/lib/constants";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { getInitials } from "@/lib/utils";
 import { FriendTogetherCelebration, type FriendTogetherProfile } from "@/components/messaging/friend-together-celebration";
 import type { UserRole } from "@/generated/prisma/enums";
@@ -347,17 +347,7 @@ export function DashboardShell({
               </div>
             )}
           </div>
-          {!collapsed && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full mt-2 justify-start text-muted-foreground"
-              onClick={() => signOut({ callbackUrl: "/" })}
-            >
-              <LogOut className="h-4 w-4" />
-              Sign out
-            </Button>
-          )}
+          <SignOutButton collapsed={collapsed} />
         </div>
       </aside>
 
