@@ -3,6 +3,7 @@ import type { UserRole, WasteType } from "@/generated/prisma/enums";
 export const APP_NAME = "EcoRewards";
 export const APP_TAGLINE =
   "Transforming Waste into Rewards through Smart Recycling.";
+export const STAFF_PROFILE_IMAGE = "/staff-profile.png";
 
 export const POINT_VALUE_PHP = 0.05;
 export const MIN_REDEMPTION_PHP = 150;

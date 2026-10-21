@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Camera, Check, ImagePlus, Leaf, LoaderCircle, Mail, MapPin, Trash2 } from "lucide-react";
 import { getInitials } from "@/lib/utils";
+import { PasswordUpdateForm } from "@/components/account/password-update-form";
 
 type Barangay = { id: string; name: string };
 
@@ -96,6 +97,8 @@ export function ProfileForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Update failed");
+      await update();
+      router.refresh();
       toast.success("Profile updated", { description: "Your barangay and resident details are saved." });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update profile");
@@ -231,6 +234,7 @@ export function ProfileForm({
           </div>
         </form>
       </section>
+      <PasswordUpdateForm />
     </div>
   );
 }

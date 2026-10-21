@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { APP_NAME, ROLE_LABELS } from "@/lib/constants";
+import { APP_NAME, ROLE_LABELS, STAFF_PROFILE_IMAGE } from "@/lib/constants";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { getInitials } from "@/lib/utils";
@@ -69,6 +69,7 @@ const STAFF_NAV: NavItem[] = [
   { href: "/staff/pickups", label: "Manage Pickups", icon: Truck },
   { href: "/staff/messages", label: "Messenger", icon: MessageCircle },
   { href: "/staff/reports", label: "Reports", icon: History },
+  { href: "/staff/settings", label: "Settings", icon: Settings },
 ];
 
 const ADMIN_NAV: NavItem[] = [
@@ -119,6 +120,10 @@ export function DashboardShell({
   const friendCelebrationTimerRef = useRef<number | null>(null);
   const nav = NAV_BY_ROLE[role] ?? RESIDENT_NAV;
   const context = ROLE_CONTEXT[role] ?? ROLE_CONTEXT.RESIDENT;
+  const profileImage =
+    role === "COLLECTION_STAFF" || role === "BARANGAY_STAFF"
+      ? STAFF_PROFILE_IMAGE
+      : session?.user?.image;
   const activeItem = nav.find((item) => pathname === item.href || (item.href !== "/resident" && item.href !== "/staff" && item.href !== "/admin" && pathname.startsWith(item.href)));
   const activeHref = activeItem?.href;
   const refreshUnreadActivity = useCallback(async () => {
@@ -363,7 +368,7 @@ export function DashboardShell({
         <div className="p-3 border-t border-border/50">
           <div className={cn("flex items-center gap-3 rounded-xl bg-muted/60 p-2", collapsed && "justify-center bg-transparent p-0")}>
             <Avatar className="h-9 w-9">
-              <AvatarImage src={session?.user?.image ?? undefined} />
+              <AvatarImage src={profileImage ?? undefined} />
               <AvatarFallback>{getInitials(session?.user?.name)}</AvatarFallback>
             </Avatar>
             {!collapsed && (

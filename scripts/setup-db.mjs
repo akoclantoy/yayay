@@ -111,6 +111,31 @@ try {
   throw error;
 }
 
+const staffAvatarClient = new pg.Client({
+  connectionString: realtimeDatabaseUrl,
+  application_name: "ecorewards-staff-avatar-setup",
+});
+try {
+  await staffAvatarClient.connect();
+  const result = await staffAvatarClient.query(
+    `UPDATE ecorewards."User"
+     SET image = $1
+     WHERE role::text IN ('COLLECTION_STAFF', 'BARANGAY_STAFF')
+       AND image IS DISTINCT FROM $1`,
+    ["/staff-profile.png"]
+  );
+  if (result.rowCount) {
+    console.log(
+      `[setup-db] Set the standard staff profile picture for ${result.rowCount} existing account(s).`
+    );
+  }
+} catch (error) {
+  console.error("[setup-db] Failed to set the standard staff profile picture:", error);
+  throw error;
+} finally {
+  await staffAvatarClient.end();
+}
+
 if (process.env.SKIP_DATABASE_SEED === "true" || process.env.RENDER === "true") {
   console.log("[setup-db] Skipping demo data seed in Render/production startup to avoid pool-timeout hangs.");
 } else {

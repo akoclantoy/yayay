@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
+import { STAFF_PROFILE_IMAGE } from "@/lib/constants";
 
 const DEMO_USERS = [
   {
@@ -50,6 +51,10 @@ export async function ensureDemoUsers() {
             update: {
               name: demo.name,
               passwordHash,
+              image:
+                demo.role === "COLLECTION_STAFF"
+                  ? STAFF_PROFILE_IMAGE
+                  : undefined,
               emailVerified: new Date(),
               isActive: true,
               deletedAt: null,
@@ -59,6 +64,10 @@ export async function ensureDemoUsers() {
               name: demo.name,
               email: demo.email,
               passwordHash,
+              image:
+                demo.role === "COLLECTION_STAFF"
+                  ? STAFF_PROFILE_IMAGE
+                  : undefined,
               emailVerified: new Date(),
               role: demo.role,
               ...(demo.role === "COLLECTION_STAFF" && center

@@ -177,9 +177,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         try {
           const dbUser = await db.user.findUnique({
             where: { id: token.id as string },
-            select: { image: true },
+            select: { image: true, name: true },
           });
-          if (dbUser) token.picture = dbUser.image;
+          if (dbUser) {
+            token.picture = dbUser.image;
+            token.name = dbUser.name;
+          }
         } catch (error) {
           console.error("[auth:jwt:image-refresh]", error);
         }

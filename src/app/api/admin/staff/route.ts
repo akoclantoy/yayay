@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/api-auth";
 import { createStaffSchema } from "@/lib/validators/auth";
+import { STAFF_PROFILE_IMAGE } from "@/lib/constants";
 
 export async function POST(request: Request) {
   const authResult = await requireRole(["ADMIN"]);
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
         name,
         email: normalizedEmail,
         passwordHash,
+        image: STAFF_PROFILE_IMAGE,
         emailVerified: new Date(),
         role: "COLLECTION_STAFF",
         staffProfile: { create: {} },

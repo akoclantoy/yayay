@@ -3,6 +3,7 @@ import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { isGeminiConfigured } from "@/lib/gemini";
+import { PasswordUpdateForm } from "@/components/account/password-update-form";
 
 export default async function AdminSettingsPage() {
   const settings = await db.systemSetting.findMany({
@@ -98,6 +99,8 @@ export default async function AdminSettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      <PasswordUpdateForm />
     </div>
   );
 }
