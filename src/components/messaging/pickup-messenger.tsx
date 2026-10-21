@@ -262,11 +262,11 @@ export function PickupMessenger({
 
   return (
     <div className={cn(
-      "mx-auto grid max-w-7xl gap-5 lg:grid-cols-[340px_minmax(0,1fr)]",
+      "mx-auto grid max-w-7xl gap-5 lg:h-[calc(100dvh-10rem)] lg:min-h-[34rem] lg:grid-cols-[340px_minmax(0,1fr)]",
       fullScreen && "h-full min-h-0 w-full max-w-none grid-cols-1 grid-rows-[minmax(0,1fr)] gap-0 lg:grid-cols-[320px_minmax(0,1fr)] lg:grid-rows-1",
     )}>
       <Card className={cn(
-        "overflow-hidden",
+        "overflow-hidden lg:h-full lg:min-h-0",
         fullScreen && "flex h-full min-h-0 flex-col rounded-none border-0 shadow-none lg:border-r",
       )}>
         <CardHeader className="bg-gradient-to-br from-emerald-950 to-emerald-800 text-white">
@@ -354,7 +354,7 @@ export function PickupMessenger({
       </Card>
 
       <Card className={cn(
-        "flex min-h-[560px] flex-col overflow-hidden",
+        "flex min-h-[560px] flex-col overflow-hidden lg:h-full lg:min-h-0",
         fullScreen && "h-full min-h-0 rounded-none border-0 shadow-none",
       )}>
         {activeConversation ? (

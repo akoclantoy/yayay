@@ -35,7 +35,7 @@ export default function HomePage() {
           </nav>
           <div className="flex items-center gap-3">
             <a
-              href="https://drive.google.com/file/d/1mLk32yXy98qF5iaXjyBBtmXT303_0Gk7/view?usp=sharing"
+              href="https://drive.google.com/file/d/1UkG66_lTEqJ7SlyJW4Vwwo_CXiyCzAtz/view?usp=sharing"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Install the EcoRewards application"

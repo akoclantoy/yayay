@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { syncWeightMilestoneBadges } from "@/lib/services/badges";
+import { hasUnreadMessage } from "@/lib/resident-social";
 
 export async function GET(request: Request) {
   const authResult = await requireSession();
@@ -46,7 +47,7 @@ export async function GET(request: Request) {
         },
       });
     } else if (role === "RESIDENT") {
-      const [unreadMessages] = await Promise.all([
+      const [unreadNotifications, , conversations] = await Promise.all([
         db.notification.count({
           where: {
             userId,
@@ -55,8 +56,42 @@ export async function GET(request: Request) {
           },
         }),
         syncWeightMilestoneBadges(userId),
+        db.directConversation.findMany({
+          where: {
+            OR: [
+              { participantLowId: userId, hiddenAtLow: null },
+              { participantHighId: userId, hiddenAtHigh: null },
+            ],
+          },
+          select: {
+            participantLowId: true,
+            lastReadAtLow: true,
+            lastReadAtHigh: true,
+            messages: {
+              where: { deletedAt: null },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { senderId: true, createdAt: true },
+            },
+          },
+        }),
       ]);
-      unreadByLink["/resident/messages"] = unreadMessages;
+      const unreadConversations = conversations.filter((conversation) => {
+        const isLowParticipant = conversation.participantLowId === userId;
+        const latestMessage = conversation.messages[0];
+        return latestMessage
+          ? hasUnreadMessage({
+              senderId: latestMessage.senderId,
+              residentId: userId,
+              messageCreatedAt: latestMessage.createdAt,
+              readAt: isLowParticipant
+                ? conversation.lastReadAtLow
+                : conversation.lastReadAtHigh,
+            })
+          : false;
+      }).length;
+      unreadByLink["/resident/messages"] =
+        unreadNotifications + unreadConversations;
       unreadByLink["/resident/badges"] = await db.userBadge.count({
         where: { userId, claimedAt: null, bonusPoints: { gt: 0 } },
       });

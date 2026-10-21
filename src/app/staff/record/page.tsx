@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,6 @@ type Category = { id: string; name: string; pointsPerKg: number; type: string };
 
 function RecordForm() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -54,7 +53,12 @@ function RecordForm() {
         throw new Error(message);
       }
       toast.success(`Recorded! ${data.pointsEarned} points awarded.`);
-      router.push("/staff");
+      setForm((current) => ({
+        ...current,
+        wasteCategoryId: "",
+        weightKg: "",
+        notes: "",
+      }));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to record");
     } finally {

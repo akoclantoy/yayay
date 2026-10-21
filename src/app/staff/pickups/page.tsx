@@ -82,6 +82,9 @@ export default function StaffPickupsPage() {
 
   const mapPoints: TupiMapPoint[] = pickups.flatMap((pickup) => {
     if (
+      pickup.status === "COLLECTED" ||
+      pickup.status === "COMPLETED" ||
+      pickup.status === "CANCELLED" ||
       pickup.latitude === null ||
       pickup.longitude === null ||
       !isWithinTupi(pickup.latitude, pickup.longitude)
