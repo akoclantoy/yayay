@@ -49,7 +49,7 @@ export default auth((req) => {
   if (isPublic(path)) {
     if (
       isLoggedIn &&
-      (path === "/" || AUTH_PATHS.includes(path))
+      AUTH_PATHS.includes(path)
     ) {
       const role = session.user.role ?? "RESIDENT";
       const destination = ROLE_DASHBOARD[role];
