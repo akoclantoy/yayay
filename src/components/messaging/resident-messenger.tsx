@@ -29,7 +29,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { SignOutButton } from "@/components/auth/sign-out-button";
 import { FriendTogetherCelebration } from "@/components/messaging/friend-together-celebration";
 import { PickupMessenger } from "@/components/messaging/pickup-messenger";
 import { cn } from "@/lib/utils";
@@ -950,7 +949,6 @@ export function ResidentMessenger({
                 <span className="hidden sm:inline">Pickup messages</span>
               </Button>
             )}
-            <SignOutButton compact className="hover:bg-muted hover:text-foreground" />
             <Link href="/resident" aria-label="Return to resident dashboard" title="Back to dashboard" className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-accent/20 text-primary transition hover:bg-accent/35">
               <Recycle className="h-5 w-5" />
             </Link>
@@ -1114,7 +1112,6 @@ export function ResidentMessenger({
                         <MapPin className="h-5 w-5" />
                       </button>
                     )}
-                    <SignOutButton compact className="hover:bg-muted hover:text-foreground" />
                     <button type="button" title="Share your QR code" aria-label="Share your QR code" onClick={() => setShareQrOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Wallet className="h-5 w-5" /></button>
                     <button type="button" title="Conversation appearance" onClick={() => setThemeOpen((open) => !open)} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><Settings2 className="h-5 w-5" /></button>
                     <button type="button" title="Conversation settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen((open) => !open); setThemeOpen(false); }} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><MoreHorizontal className="h-5 w-5" /></button>
