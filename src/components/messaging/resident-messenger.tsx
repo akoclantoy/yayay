@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { FriendTogetherCelebration } from "@/components/messaging/friend-together-celebration";
 import { PickupMessenger } from "@/components/messaging/pickup-messenger";
 import { cn } from "@/lib/utils";
+import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
 
 type Resident = { id: string; name: string | null; image: string | null; qrCode?: string };
 type Friend = Resident & { createdAt?: string };
@@ -363,24 +364,6 @@ export function ResidentMessenger({
   }, [search, tab]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      const updateOpenConversation = async () => {
-        if (activeConversationId) {
-          await refreshOpenConversation(activeConversationId);
-        } else {
-          await refresh();
-        }
-      };
-      void updateOpenConversation().catch((cause: unknown) => {
-        setError(getErrorMessage(cause));
-      });
-    }, 8000);
-    return () => window.clearInterval(timer);
-  }, [activeConversationId, refresh, refreshOpenConversation]);
-
-  useEffect(() => {
-    const events = new EventSource("/api/realtime");
     const updateMessages = () => {
       if (document.visibilityState !== "visible") return;
       const update = async () => {
@@ -394,11 +377,7 @@ export function ResidentMessenger({
         setError(getErrorMessage(cause));
       });
     };
-    events.addEventListener("invalidate", updateMessages);
-    return () => {
-      events.removeEventListener("invalidate", updateMessages);
-      events.close();
-    };
+    return subscribeToRealtimeChanges(updateMessages);
   }, [activeConversationId, refresh, refreshOpenConversation]);
 
   useEffect(() => {

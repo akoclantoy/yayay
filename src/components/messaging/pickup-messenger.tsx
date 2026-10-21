@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, formatDateTime, getInitials } from "@/lib/utils";
+import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
 
 type Message = {
   id: string;
@@ -187,7 +188,6 @@ export function PickupMessenger({
   }, [activeId, loadMessages]);
 
   useEffect(() => {
-    const events = new EventSource("/api/realtime");
     const refresh = () => {
       void loadConversations()
         .then(() => loadMessages(activeId))
@@ -195,11 +195,7 @@ export function PickupMessenger({
           console.error("[messenger] Could not refresh conversations:", error);
         });
     };
-    events.addEventListener("invalidate", refresh);
-    return () => {
-      events.removeEventListener("invalidate", refresh);
-      events.close();
-    };
+    return subscribeToRealtimeChanges(refresh);
   }, [activeId, loadConversations, loadMessages]);
 
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {

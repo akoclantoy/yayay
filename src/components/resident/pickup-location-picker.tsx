@@ -8,6 +8,7 @@ import type { TupiMapPoint } from "@/components/maps/tupi-map";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatPoints } from "@/lib/utils";
 import { isWithinTupi } from "@/lib/tupi";
+import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
 
 export function PickupLocationPicker({
   value,
@@ -36,17 +37,15 @@ export function PickupLocationPicker({
       toast.error(error instanceof Error ? error.message : "Could not load pickup activity.");
       setLoading(false);
     });
-    const events = new EventSource("/api/realtime");
     const refresh = () => {
       void loadHeat().catch((error: unknown) =>
         console.error("[pickup-map] Could not refresh activity:", error)
       );
     };
-    events.addEventListener("invalidate", refresh);
+    const unsubscribe = subscribeToRealtimeChanges(refresh);
     return () => {
       controller.abort();
-      events.removeEventListener("invalidate", refresh);
-      events.close();
+      unsubscribe();
     };
   }, [loadHeat]);
 

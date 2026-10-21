@@ -10,6 +10,7 @@ import type { TupiMapPoint } from "@/components/maps/tupi-map";
 import { MessageCircle, MapPinned } from "lucide-react";
 import Link from "next/link";
 import { isWithinTupi } from "@/lib/tupi";
+import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
 
 type Pickup = {
   id: string;
@@ -50,17 +51,12 @@ export default function StaffPickupsPage() {
         toast.error(message);
       })
       .finally(() => setLoading(false));
-    const events = new EventSource("/api/realtime");
     const refresh = () => {
       void loadPickups().catch((error: unknown) => {
         console.error("[staff-pickups] Could not refresh pickups:", error);
       });
     };
-    events.addEventListener("invalidate", refresh);
-    return () => {
-      events.removeEventListener("invalidate", refresh);
-      events.close();
-    };
+    return subscribeToRealtimeChanges(refresh);
   }, [loadPickups]);
 
   async function updateStatus(id: string, status: string) {

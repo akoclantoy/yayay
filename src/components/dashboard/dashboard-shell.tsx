@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
 import { APP_NAME, ROLE_LABELS, STAFF_PROFILE_IMAGE } from "@/lib/constants";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -187,18 +188,6 @@ export function DashboardShell({
     }
   }, []);
 
-  useEffect(() => {
-    if (role !== "RESIDENT" || !session?.user?.id) return;
-    const refresh = () => {
-      void refreshFriendTogether().catch((error: unknown) => {
-        console.error("[dashboard] Could not refresh friend connection activity:", error);
-      });
-    };
-    refresh();
-    const timer = window.setInterval(refresh, 8000);
-    return () => window.clearInterval(timer);
-  }, [refreshFriendTogether, role, session?.user?.id]);
-
   useEffect(() => () => {
     if (friendCelebrationTimerRef.current !== null) {
       window.clearTimeout(friendCelebrationTimerRef.current);
@@ -208,7 +197,6 @@ export function DashboardShell({
   useEffect(() => {
     if (!session?.user?.id) return;
 
-    const events = new EventSource("/api/realtime");
     const refresh = () => {
       void refreshUnreadActivity().catch((error: unknown) => {
         console.error("[dashboard] Could not refresh unread activity:", error);
@@ -219,13 +207,8 @@ export function DashboardShell({
         });
       }
     };
-    events.addEventListener("open", refresh);
-    events.addEventListener("invalidate", refresh);
-    return () => {
-      events.removeEventListener("open", refresh);
-      events.removeEventListener("invalidate", refresh);
-      events.close();
-    };
+    refresh();
+    return subscribeToRealtimeChanges(refresh);
   }, [refreshFriendTogether, refreshUnreadActivity, role, session?.user?.id]);
 
   useEffect(() => {
