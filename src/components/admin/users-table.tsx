@@ -6,15 +6,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ROLE_LABELS } from "@/lib/constants";
-import { formatDate } from "@/lib/utils";
+import { ROLE_LABELS, STAFF_PROFILE_IMAGE } from "@/lib/constants";
+import { formatDate, getInitials } from "@/lib/utils";
 import type { UserRole } from "@/generated/prisma/enums";
 import { RemoveStaffButton } from "@/components/admin/remove-staff-button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 type User = {
   id: string;
   name: string | null;
   email: string;
+  image: string | null;
   role: UserRole;
   isActive: boolean;
   createdAt: Date;
@@ -74,44 +76,84 @@ export function UsersTable({ users }: { users: User[] }) {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="pb-3 pr-4">Name</th>
-                <th className="pb-3 pr-4">Email</th>
-                <th className="pb-3 pr-4">Role</th>
-                <th className="pb-3 pr-4">Status</th>
-                <th className="pb-3 pr-4">Joined</th>
-                <th className="pb-3 text-right">Actions</th>
+        <div className="overflow-x-auto rounded-xl border border-border/60">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead className="bg-muted/35">
+              <tr className="text-left text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                <th className="px-4 py-3 font-semibold">User</th>
+                <th className="px-4 py-3 font-semibold">Role</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold">Joined</th>
+                <th className="px-4 py-3 text-right font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id} className="border-b border-border/50 last:border-0">
-                  <td className="py-3 pr-4 font-medium">
-                    <div>{user.name ?? "—"}</div>
-                    {(user.role === "COLLECTION_STAFF" || user.role === "BARANGAY_STAFF") && (
-                      <div className="text-xs font-normal text-primary">Staff</div>
-                    )}
-                  </td>
-                  <td className="py-3 pr-4">{user.email}</td>
-                  <td className="py-3 pr-4">
-                    <Badge variant="secondary">{ROLE_LABELS[user.role]}</Badge>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <Badge variant={user.isActive ? "success" : "warning"}>
-                      {user.isActive ? "Active" : "Inactive"}
-                    </Badge>
-                  </td>
-                  <td className="py-3 pr-4">{formatDate(user.createdAt)}</td>
-                  <td className="py-3 text-right">
-                    {(user.role === "COLLECTION_STAFF" || user.role === "BARANGAY_STAFF") && (
-                      <RemoveStaffButton userId={user.id} name={user.name ?? user.email} />
-                    )}
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-border/50">
+              {filteredUsers.map((user) => {
+                const isStaff =
+                  user.role === "COLLECTION_STAFF" ||
+                  user.role === "BARANGAY_STAFF";
+                const photo = isStaff ? STAFF_PROFILE_IMAGE : user.image;
+
+                return (
+                  <tr
+                    key={user.id}
+                    className="group transition-colors hover:bg-muted/25"
+                  >
+                    <td className="px-4 py-3.5">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Avatar className="h-11 w-11 border-2 border-background shadow-sm ring-1 ring-border/70">
+                          <AvatarImage
+                            src={photo ?? undefined}
+                            alt={`${user.name ?? user.email}'s profile picture`}
+                            className="object-cover"
+                          />
+                          <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
+                            {getInitials(user.name ?? user.email)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-foreground">
+                            {user.name ?? "Name not provided"}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {user.email}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Badge
+                        variant={user.role === "ADMIN" ? "default" : "secondary"}
+                        className="whitespace-nowrap"
+                      >
+                        {ROLE_LABELS[user.role]}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Badge variant={user.isActive ? "success" : "warning"}>
+                        <span
+                          aria-hidden="true"
+                          className={`mr-1.5 h-1.5 w-1.5 rounded-full ${
+                            user.isActive ? "bg-emerald-500" : "bg-amber-500"
+                          }`}
+                        />
+                        {user.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3.5 text-muted-foreground">
+                      {formatDate(user.createdAt)}
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      {isStaff && (
+                        <RemoveStaffButton
+                          userId={user.id}
+                          name={user.name ?? user.email}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

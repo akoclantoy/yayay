@@ -47,6 +47,7 @@ async function loadUsers() {
         id: true,
         name: true,
         email: true,
+        image: true,
         role: true,
         isActive: true,
         createdAt: true,
