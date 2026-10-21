@@ -5,13 +5,16 @@ import { db } from "@/lib/db";
 import {
   canonicalDirectConversationPair,
   canonicalFriendshipPair,
+  createResidentQrMessage,
+  getSharedResidentQrCode,
   hasUnreadMessage,
 } from "@/lib/resident-social";
 
 const messageSchema = z.object({
+  action: z.enum(["message", "share_qr"]).optional(),
   friendId: z.string().min(1),
-  content: z.string().trim().min(1).max(2000),
-});
+  content: z.string().trim().min(1).max(2000).optional(),
+}).refine((value) => value.action === "share_qr" || Boolean(value.content));
 
 const actionSchema = z.object({
   conversationId: z.string().min(1).optional(),
@@ -254,6 +257,7 @@ export async function PATCH(request: Request) {
         select: {
           id: true,
           senderId: true,
+          content: true,
           systemMessage: true,
           conversation: {
             select: {
@@ -287,7 +291,13 @@ export async function PATCH(request: Request) {
           return NextResponse.json({ error: "Only your own messages can be changed" }, { status: 403 });
         }
         if (action === "edit_message") {
+          if (getSharedResidentQrCode(message.content) !== null) {
+            return NextResponse.json({ error: "Shared QR codes cannot be edited" }, { status: 403 });
+          }
           if (!content) return NextResponse.json({ error: "Message content is required" }, { status: 400 });
+          if (getSharedResidentQrCode(content) !== null) {
+            return NextResponse.json({ error: "Use the QR sharing action to share a resident code" }, { status: 400 });
+          }
           const updated = await db.$transaction(async (tx) => {
             const updatedMessage = await tx.directMessage.update({
               where: { id: message.id },
@@ -464,7 +474,7 @@ export async function POST(request: Request) {
   const userId = authResult.session.user.id;
 
   try {
-    const { friendId, content } = messageSchema.parse(await request.json());
+    const { action, friendId, content } = messageSchema.parse(await request.json());
     if (friendId === userId) return NextResponse.json({ error: "You cannot message yourself" }, { status: 400 });
     const friendship = await isFriend(userId, friendId);
     if (!friendship) return NextResponse.json({ error: "You can message friends only" }, { status: 403 });
@@ -485,6 +495,22 @@ export async function POST(request: Request) {
     });
     if (!friend) return NextResponse.json({ error: "Resident unavailable" }, { status: 404 });
 
+    let messageContent = content;
+    if (action === "share_qr") {
+      const profile = await db.residentProfile.findUnique({
+        where: { userId },
+        select: { qrCode: true },
+      });
+      if (!profile) return NextResponse.json({ error: "Resident profile not found" }, { status: 404 });
+      messageContent = createResidentQrMessage(profile.qrCode);
+    }
+    if (!messageContent) {
+      return NextResponse.json({ error: "Message content is required" }, { status: 400 });
+    }
+    if (action !== "share_qr" && getSharedResidentQrCode(messageContent) !== null) {
+      return NextResponse.json({ error: "Use the QR sharing action to share a resident code" }, { status: 400 });
+    }
+
     const pair = canonicalDirectConversationPair(userId, friendId);
     const result = await db.$transaction(async (tx) => {
       const conversation = await tx.directConversation.upsert({
@@ -495,7 +521,7 @@ export async function POST(request: Request) {
         update: { hiddenAtLow: null, hiddenAtHigh: null },
       });
       const message = await tx.directMessage.create({
-        data: { conversationId: conversation.id, senderId: userId, content },
+        data: { conversationId: conversation.id, senderId: userId, content: messageContent },
         select: { id: true, senderId: true, content: true, createdAt: true },
       });
       await tx.directConversation.update({

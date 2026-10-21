@@ -33,6 +33,7 @@ import { FriendTogetherCelebration } from "@/components/messaging/friend-togethe
 import { PickupMessenger } from "@/components/messaging/pickup-messenger";
 import { cn } from "@/lib/utils";
 import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
+import { getSharedResidentQrCode } from "@/lib/resident-social";
 
 type Resident = { id: string; name: string | null; image: string | null; qrCode?: string };
 type Friend = Resident & { createdAt?: string };
@@ -90,6 +91,10 @@ type MessengerData = {
   outgoingRequests: FriendRequest[];
 };
 type Tab = "inbox" | "friends" | "requests" | "directory" | "profile";
+
+function getMessagePreview(content: string) {
+  return getSharedResidentQrCode(content) ? "Shared a resident QR code" : content;
+}
 
 const THEMES: Record<string, { label: string; background: string; accent: string }> = {
   forest: { label: "Forest", background: "linear-gradient(145deg, #eaf4e9, #f9fcf7)", accent: "#28754e" },
@@ -167,7 +172,9 @@ export function ResidentMessenger({
   const [profile, setProfile] = useState<FriendProfile | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
+  const [shareQrOpen, setShareQrOpen] = useState(false);
   const [transferMode, setTransferMode] = useState(false);
+  const [transferConfirm, setTransferConfirm] = useState(false);
   const [transferAmount, setTransferAmount] = useState("");
   const [transferBalance, setTransferBalance] = useState(0);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -253,6 +260,7 @@ export function ResidentMessenger({
         `/api/resident/friends?qr=${encodeURIComponent(qrCode.trim())}`,
       );
       setProfile(response.profile);
+      setTransferConfirm(false);
       setTab("friends");
     } catch (cause) {
       setError(getErrorMessage(cause));
@@ -555,6 +563,29 @@ export function ResidentMessenger({
     }
   }
 
+  async function shareQrInConversation() {
+    if (!activeFriend) return;
+    setWorking(true);
+    setError(null);
+    try {
+      const response = await requestJson<{ conversation: { id: string } }>("/api/resident/direct-messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "share_qr", friendId: activeFriend.id }),
+      });
+      setShareQrOpen(false);
+      setActiveFriendId(activeFriend.id);
+      setActiveConversationId(response.conversation.id);
+      await refresh();
+      await loadDetails(response.conversation.id);
+      setNotice("Your QR code was shared in this conversation.");
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function saveDirectMessage(messageId: string) {
     setWorking(true);
     setError(null);
@@ -666,12 +697,31 @@ export function ResidentMessenger({
     event.preventDefault();
     const recipient = profile;
     if (!recipient?.qrCode || !recipient.isFriend) {
-      setError("Scan a friend's QR code before starting a points transfer.");
+      setError("Verify a friend's QR code before starting a points transfer.");
       return;
     }
     const amount = Number(transferAmount);
     if (!Number.isInteger(amount) || amount < 1 || amount > 10_000) {
       setError("Enter a whole number from 1 to 10,000 points.");
+      return;
+    }
+    if (amount > transferBalance) {
+      setError("You do not have enough points for this transfer.");
+      return;
+    }
+    setTransferConfirm(true);
+  }
+
+  async function confirmTransfer() {
+    const recipient = profile;
+    const amount = Number(transferAmount);
+    if (!recipient?.qrCode || !recipient.isFriend) {
+      setError("Verify a friend's QR code before starting a points transfer.");
+      return;
+    }
+    if (!Number.isInteger(amount) || amount < 1 || amount > 10_000 || amount > transferBalance) {
+      setError("Enter a valid points amount within your available balance.");
+      setTransferConfirm(false);
       return;
     }
     setWorking(true);
@@ -685,6 +735,7 @@ export function ResidentMessenger({
       setTransferBalance(result.balance);
       setTransferAmount("");
       setTransferMode(false);
+      setTransferConfirm(false);
       setNotice(`${amount.toLocaleString("en-US")} points sent to ${displayName(recipient)}.`);
       setActiveFriendId(recipient.id);
       setActiveConversationId(result.conversationId);
@@ -693,6 +744,76 @@ export function ResidentMessenger({
       setProfile(null);
       await refresh();
       await loadDetails(result.conversationId);
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function scanSharedQr(message: Message, svg: SVGSVGElement | null) {
+    const expectedQrCode = getSharedResidentQrCode(message.content);
+    if (!expectedQrCode || message.senderId === residentId || !svg) {
+      setError("This is not a QR code shared by a friend.");
+      return;
+    }
+
+    setWorking(true);
+    setError(null);
+    try {
+      const svgUrl = URL.createObjectURL(new Blob(
+        [new XMLSerializer().serializeToString(svg)],
+        { type: "image/svg+xml;charset=utf-8" },
+      ));
+      let imageFile: File;
+      try {
+        const image = new Image();
+        image.src = svgUrl;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = 512;
+        canvas.height = 512;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Unable to read the QR code image.");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const png = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error("Unable to prepare the QR code image."));
+          }, "image/png");
+        });
+        imageFile = new File([png], "resident-qr.png", { type: "image/png" });
+      } finally {
+        URL.revokeObjectURL(svgUrl);
+      }
+
+      const { Html5Qrcode } = await import("html5-qrcode");
+      const scanner = new Html5Qrcode("resident-qr-image-reader");
+      let decodedQrCode: string;
+      try {
+        decodedQrCode = await scanner.scanFile(imageFile, true);
+      } finally {
+        try {
+          scanner.clear();
+        } catch (cause) {
+          console.error("[resident-messenger] Could not clear QR image scanner:", cause);
+        }
+      }
+      if (decodedQrCode !== expectedQrCode) {
+        throw new Error("This QR image does not match the resident code shared in the message.");
+      }
+
+      const response = await requestJson<{ profile: FriendProfile }>(
+        `/api/resident/friends?qr=${encodeURIComponent(decodedQrCode)}`,
+      );
+      if (response.profile.id !== message.senderId || !response.profile.isFriend) {
+        throw new Error("This QR code is not from an active friend.");
+      }
+      setProfile(response.profile);
+      setTransferMode(true);
+      setTransferConfirm(false);
+      setTransferAmount("");
+      await loadTransferBalance();
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
@@ -808,14 +929,6 @@ export function ResidentMessenger({
     setDetails(null);
   }
 
-  async function startTransferScan() {
-    setProfile(null);
-    setTransferMode(true);
-    setScannerError(null);
-    await loadTransferBalance();
-    setScannerOpen(true);
-  }
-
   const currentDetails = details?.id === activeConversationId ? details : null;
   const currentTheme = THEMES[currentDetails?.theme ?? "forest"] ?? THEMES.forest;
 
@@ -895,7 +1008,7 @@ export function ResidentMessenger({
                           <span className={cn("truncate text-sm", item.unread ? "font-extrabold text-foreground" : "font-semibold")}>{displayName(item.friend)}</span>
                           <span className={cn("shrink-0 text-[10px]", item.unread ? "font-bold text-primary" : "text-muted-foreground")}>{item.lastMessage ? dateFormatter.format(new Date(item.lastMessage.createdAt)) : ""}</span>
                         </span>
-                        <span className={cn("mt-1 block truncate text-xs", item.unread ? "font-bold text-foreground" : "text-muted-foreground")}>{item.lastMessage?.content ?? "Start a conversation"}</span>
+                        <span className={cn("mt-1 block truncate text-xs", item.unread ? "font-bold text-foreground" : "text-muted-foreground")}>{item.lastMessage ? getMessagePreview(item.lastMessage.content) : "Start a conversation"}</span>
                       </span>
                     </button>
                   )) : <EmptyList icon={<MessageCircle />} title="Your inbox is ready" text="Open a friend from your list to start chatting." action="Browse friends" onAction={() => setTab("friends")} />}
@@ -999,7 +1112,7 @@ export function ResidentMessenger({
                         <MapPin className="h-5 w-5" />
                       </button>
                     )}
-                    <button type="button" title="Transfer points by scanning their QR code" onClick={() => void startTransferScan()} className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Wallet className="h-5 w-5" /></button>
+                    <button type="button" title="Share your QR code" aria-label="Share your QR code" onClick={() => setShareQrOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Wallet className="h-5 w-5" /></button>
                     <button type="button" title="Conversation appearance" onClick={() => setThemeOpen((open) => !open)} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><Settings2 className="h-5 w-5" /></button>
                     <button type="button" title="Conversation settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen((open) => !open); setThemeOpen(false); }} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><MoreHorizontal className="h-5 w-5" /></button>
                   </div>
@@ -1017,6 +1130,7 @@ export function ResidentMessenger({
                   <div className="mx-auto mb-5 max-w-sm text-center"><span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm"><MessageCircle className="h-3 w-3" />Your EcoRewards connection</span><p className="mt-2 text-xs text-muted-foreground">Messages are private between friends.</p></div>
                   {currentDetails?.messages.map((message) => {
                     const mine = message.senderId === residentId;
+                    const sharedQrCode = getSharedResidentQrCode(message.content);
                     const reactionCounts = REACTIONS.map((reaction) => ({
                       ...reaction,
                       count: message.reactions.filter((item) => item.kind === reaction.kind).length,
@@ -1117,6 +1231,25 @@ export function ResidentMessenger({
                                 <Button size="sm" disabled={!editMessageText.trim() || working} onClick={(event) => { event.stopPropagation(); void saveDirectMessage(message.id); }}>{working ? "Saving..." : "Save changes"}</Button>
                               </div>
                             </div>
+                          ) : sharedQrCode ? (
+                            <button
+                              type="button"
+                              disabled={working}
+                              aria-label="Verify shared QR code and transfer points"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void scanSharedQr(
+                                  message,
+                                  event.currentTarget.querySelector("svg"),
+                                );
+                              }}
+                              className="flex flex-col items-center gap-2 rounded-xl bg-white p-3 text-center text-foreground transition hover:shadow-md disabled:opacity-60"
+                            >
+                              <QRCode value={sharedQrCode} size={176} />
+                              <span className="max-w-44 text-xs font-semibold text-primary">
+                                Tap to verify and transfer points
+                              </span>
+                            </button>
                           ) : (
                             <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.content}</p>
                           )}
@@ -1127,7 +1260,7 @@ export function ResidentMessenger({
                             {message.editedAt && <span className="mr-1">edited ·</span>}
                             {dateFormatter.format(new Date(message.createdAt))}
                             {mine && !message.systemMessage && <CheckCheck className="ml-0.5 h-3 w-3" />}
-                            {mine && !message.systemMessage && editMessageId !== message.id && (
+                            {mine && !message.systemMessage && !sharedQrCode && editMessageId !== message.id && (
                               <span className="ml-2 flex gap-1">
                                 <button
                                   type="button"
@@ -1247,11 +1380,15 @@ export function ResidentMessenger({
         friend={friendCelebration}
       />
 
-      {(error || notice) && <div role={error ? "alert" : "status"} className={cn("fixed left-1/2 top-5 z-40 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 text-sm shadow-xl", error ? "bg-danger text-white" : "bg-primary text-white")}><span>{error ?? notice}</span><button type="button" aria-label="Dismiss notification" onClick={() => { setError(null); setNotice(null); }}><X className="h-4 w-4" /></button></div>}
+      <div id="resident-qr-image-reader" className="fixed left-[-10000px] top-0 h-px w-px overflow-hidden" aria-hidden="true" />
+
+      {(error || notice) && <div role={error ? "alert" : "status"} className={cn("fixed left-1/2 top-5 z-[80] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 text-sm shadow-xl", error ? "bg-danger text-white" : "bg-primary text-white")}><span>{error ?? notice}</span><button type="button" aria-label="Dismiss notification" onClick={() => { setError(null); setNotice(null); }}><X className="h-4 w-4" /></button></div>}
+
+      {shareQrOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="share-qr-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl"><div className="mb-4 flex items-center justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><QrCode className="h-5 w-5" /></span><button type="button" aria-label="Close QR code" onClick={() => setShareQrOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted"><X className="h-4 w-4" /></button></div><h2 id="share-qr-title" className="text-lg font-bold">Share your QR Code</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">Let your friend scan this code to verify your account before a points transfer.</p>{data?.ownProfile?.qrCode ? <div className="mx-auto mt-5 w-fit rounded-2xl border border-border/70 bg-white p-4 shadow-sm"><QRCode value={data.ownProfile.qrCode} size={216} /></div> : <div role="alert" className="mt-5 rounded-xl bg-danger/10 p-3 text-sm text-danger">Your resident QR code is unavailable.</div>}<p className="mt-3 text-xs font-medium text-muted-foreground">{data?.ownProfile?.user.name ?? residentName}</p><Button className="mt-5 w-full" disabled={working || !data?.ownProfile?.qrCode} onClick={() => void shareQrInConversation()}><QrCode className="h-4 w-4" />{working ? "Sharing..." : "Share in this conversation"}</Button></div></div>}
 
       {scannerOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="qr-dialog-title"><div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:p-7"><div className="flex items-start justify-between"><div><h2 id="qr-dialog-title" className="text-lg font-bold">{transferMode ? "Transfer points" : "Scan to connect"}</h2><p className="mt-1 text-sm text-muted-foreground">{transferMode ? "Scan your friend's QR code to choose a recipient." : "Scanning a resident's QR code connects you as friends right away."}</p></div><button type="button" aria-label="Close scanner" onClick={() => setScannerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button></div><div id="resident-qr-reader" className="mt-5 min-h-60 overflow-hidden rounded-2xl bg-slate-950" />{scannerError && <p role="alert" className="mt-3 rounded-xl bg-danger/10 p-3 text-sm text-danger">{scannerError}</p>}<p className="mt-3 text-center text-xs text-muted-foreground">Allow camera access and hold the QR code inside the frame.</p></div></div>}
 
-      {profile && <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-labelledby="resident-profile-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className="flex justify-end"><button type="button" aria-label="Close profile" onClick={() => { setProfile(null); setTransferMode(false); }} className="text-muted-foreground"><X className="h-5 w-5" /></button></div><div className="flex flex-col items-center text-center"><ProfileAvatar resident={profile} size="h-20 w-20" /><h2 id="resident-profile-title" className="mt-3 text-lg font-bold">{displayName(profile)}</h2><p className="text-xs text-muted-foreground">{profile.isFriend ? "Your EcoRewards friend" : "Resident profile"}</p></div>{profile.mutualFriends.length > 0 && <div className="mt-5 rounded-2xl bg-muted/50 p-3"><p className="mb-2 text-xs font-semibold text-muted-foreground">Mutual friends · {profile.mutualFriends.length}</p><div className="flex flex-wrap gap-2">{profile.mutualFriends.map((friend) => <span key={friend.id} title={displayName(friend)}><ProfileAvatar resident={friend} size="h-8 w-8" /></span>)}</div></div>}{transferMode && profile.isFriend ? <form onSubmit={(event) => void submitTransfer(event)} className="mt-5 space-y-3"><div className="rounded-xl bg-primary/5 p-3 text-sm"><span className="text-muted-foreground">Your balance</span><strong className="float-right text-primary">{transferBalance.toLocaleString("en-US")} pts</strong></div><label className="block text-left text-xs font-medium">Points to send<input type="number" min="1" max="10000" step="1" required value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-primary/50" placeholder="Maximum 10,000" /></label><p className="text-xs text-muted-foreground">No fee. Up to 10,000 points per transfer. The transfer cannot be undone.</p><Button type="submit" className="w-full" disabled={working || !transferAmount || Number(transferAmount) > transferBalance}><Wallet className="h-4 w-4" />{working ? "Sending..." : `Confirm and send${transferAmount ? ` ${Number(transferAmount).toLocaleString("en-US")} pts` : ""}`}</Button></form> : <div className="mt-5 space-y-2">{profile.incomingRequest ? <Button className="w-full" disabled={working} onClick={() => void updateRequest(profile.incomingRequest!, "ACCEPT")}><Check className="h-4 w-4" />Accept friend request</Button> : profile.isFriend ? <><Button className="w-full" onClick={() => { const friend = data?.friends.find((item) => item.id === profile.id); if (friend) openFriend(friend); setProfile(null); }}><MessageCircle className="h-4 w-4" />Message friend</Button><Button variant="outline" className="w-full" onClick={() => { setTransferMode(true); void loadTransferBalance(); }}><Wallet className="h-4 w-4" />Transfer points</Button></> : profile.outgoingRequest ? <Button variant="secondary" className="w-full" disabled={working} onClick={() => void cancelRequest(profile.outgoingRequest!)}><X className="h-4 w-4" />Cancel friend request</Button> : <Button className="w-full" disabled={working} onClick={() => void sendFriendRequest()}><UserPlus className="h-4 w-4" />Send friend request</Button>}</div>}</div></div>}
+      {profile && <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-labelledby="resident-profile-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className="flex justify-end"><button type="button" aria-label="Close profile" onClick={() => { setProfile(null); setTransferMode(false); setTransferConfirm(false); }} className="text-muted-foreground"><X className="h-5 w-5" /></button></div><div className="flex flex-col items-center text-center"><ProfileAvatar resident={profile} size="h-20 w-20" /><h2 id="resident-profile-title" className="mt-3 text-lg font-bold">{displayName(profile)}</h2><p className="text-xs text-muted-foreground">{profile.isFriend ? "Your EcoRewards friend" : "Resident profile"}</p></div>{profile.mutualFriends.length > 0 && <div className="mt-5 rounded-2xl bg-muted/50 p-3"><p className="mb-2 text-xs font-semibold text-muted-foreground">Mutual friends · {profile.mutualFriends.length}</p><div className="flex flex-wrap gap-2">{profile.mutualFriends.map((friend) => <span key={friend.id} title={displayName(friend)}><ProfileAvatar resident={friend} size="h-8 w-8" /></span>)}</div></div>}{transferMode && profile.isFriend ? transferConfirm ? <div className="mt-5 space-y-4"><div className="rounded-2xl bg-primary/5 p-4 text-center"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Review points transfer</p><p className="mt-2 text-3xl font-bold text-primary">{Number(transferAmount).toLocaleString("en-US")} pts</p><p className="mt-1 text-sm text-muted-foreground">To {displayName(profile)}</p></div><p className="text-center text-xs leading-5 text-muted-foreground">This transfer cannot be undone. Please confirm the recipient and amount.</p><Button type="button" className="w-full" disabled={working} onClick={() => void confirmTransfer()}><Wallet className="h-4 w-4" />{working ? "Sending..." : "Confirm and send points"}</Button><Button type="button" variant="outline" className="w-full" disabled={working} onClick={() => setTransferConfirm(false)}>Go back</Button></div> : <form onSubmit={(event) => void submitTransfer(event)} className="mt-5 space-y-3"><div className="rounded-xl bg-primary/5 p-3 text-sm"><span className="text-muted-foreground">Your balance</span><strong className="float-right text-primary">{transferBalance.toLocaleString("en-US")} pts</strong></div><label className="block text-left text-xs font-medium">Points to send<input type="number" min="1" max="10000" step="1" required value={transferAmount} onChange={(event) => { setTransferAmount(event.target.value); setTransferConfirm(false); }} className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-primary/50" placeholder="Maximum 10,000" /></label><p className="text-xs text-muted-foreground">No fee. Up to 10,000 points per transfer.</p><Button type="submit" className="w-full" disabled={working || !transferAmount || Number(transferAmount) > transferBalance}><Wallet className="h-4 w-4" />Continue to review</Button></form> : <div className="mt-5 space-y-2">{profile.incomingRequest ? <Button className="w-full" disabled={working} onClick={() => void updateRequest(profile.incomingRequest!, "ACCEPT")}><Check className="h-4 w-4" />Accept friend request</Button> : profile.isFriend ? <><Button className="w-full" onClick={() => { const friend = data?.friends.find((item) => item.id === profile.id); if (friend) openFriend(friend); setProfile(null); }}><MessageCircle className="h-4 w-4" />Message friend</Button><Button variant="outline" className="w-full" onClick={() => { setTransferMode(true); setTransferConfirm(false); void loadTransferBalance(); }}><Wallet className="h-4 w-4" />Transfer points</Button></> : profile.outgoingRequest ? <Button variant="secondary" className="w-full" disabled={working} onClick={() => void cancelRequest(profile.outgoingRequest!)}><X className="h-4 w-4" />Cancel friend request</Button> : <Button className="w-full" disabled={working} onClick={() => void sendFriendRequest()}><UserPlus className="h-4 w-4" />Send friend request</Button>}</div>}</div></div>}
 
       {settingsAction && activeFriend && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="conversation-action-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className={cn("mx-auto flex h-12 w-12 items-center justify-center rounded-2xl", settingsAction === "delete" ? "bg-danger/10 text-danger" : "bg-primary/10 text-primary")}>{settingsAction === "block" ? <Ban className="h-5 w-5" /> : settingsAction === "delete" ? <Trash2 className="h-5 w-5" /> : <UserRoundX className="h-5 w-5" />}</div><h2 id="conversation-action-title" className="mt-4 text-center text-lg font-bold">{settingsAction === "unfriend" ? "Unfriend this resident?" : settingsAction === "block" ? "Block this resident?" : "Delete this conversation?"}</h2><p className="mt-2 text-center text-sm leading-6 text-muted-foreground">{settingsAction === "unfriend" ? `${displayName(activeFriend)} will be removed from your friends. You can reconnect later by sending a new friend request.` : settingsAction === "block" ? `${displayName(activeFriend)} will be removed from your friends and hidden from your directory. Neither of you can view the other's profile or send messages.` : "This removes the conversation from your inbox. It does not delete the other resident's copy."}</p><div className="mt-6 flex gap-3"><Button type="button" variant="secondary" className="flex-1" disabled={working} onClick={() => setSettingsAction(null)}>Keep</Button><Button type="button" variant={settingsAction === "unfriend" ? "default" : "destructive"} className="flex-1" disabled={working} onClick={() => void updateConversation(settingsAction)}>{working ? "Please wait..." : settingsAction === "unfriend" ? "Unfriend" : settingsAction === "block" ? "Block resident" : "Delete chat"}</Button></div></div></div>}
 

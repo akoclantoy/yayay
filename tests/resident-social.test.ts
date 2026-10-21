@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   canonicalDirectConversationPair,
   canonicalFriendshipPair,
+  createResidentQrMessage,
+  getSharedResidentQrCode,
   hasUnreadMessage,
 } from "../src/lib/resident-social";
 
@@ -11,6 +13,14 @@ describe("resident social pair keys", () => {
     assert.deepEqual(canonicalFriendshipPair("resident-b", "resident-a"), {
       userLowId: "resident-a",
       userHighId: "resident-b",
+    });
+
+    describe("resident QR messages", () => {
+      it("round-trips a resident QR code and ignores ordinary text", () => {
+        const message = createResidentQrMessage("resident-qr-code");
+        assert.equal(getSharedResidentQrCode(message), "resident-qr-code");
+        assert.equal(getSharedResidentQrCode("A regular message"), null);
+      });
     });
     assert.deepEqual(canonicalFriendshipPair("resident-a", "resident-b"), {
       userLowId: "resident-a",
