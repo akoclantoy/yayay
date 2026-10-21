@@ -72,10 +72,10 @@ export async function GET(request: Request) {
           lastReadAtLow: true,
           lastReadAtHigh: true,
           participantLow: {
-            select: { id: true, name: true, image: true, isActive: true },
+            select: { id: true, name: true, image: true, isActive: true, lastSeenAt: true },
           },
           participantHigh: {
-            select: { id: true, name: true, image: true, isActive: true },
+            select: { id: true, name: true, image: true, isActive: true, lastSeenAt: true },
           },
           messages: {
             where: { deletedAt: null },
@@ -114,16 +114,25 @@ export async function GET(request: Request) {
         ? conversation.participantHigh
         : conversation.participantLow;
       if (!friend.isActive) return NextResponse.json({ error: "Resident unavailable" }, { status: 404 });
+      const friendReadAt = conversation.participantLowId === userId
+        ? conversation.lastReadAtHigh
+        : conversation.lastReadAtLow;
       return NextResponse.json({
         conversation: {
           id: conversation.id,
           theme: conversation.theme,
           backgroundImageUrl: conversation.backgroundImageUrl,
-          friend: { id: friend.id, name: friend.name, image: friend.image },
+          friend: {
+            id: friend.id,
+            name: friend.name,
+            image: friend.image,
+            online: Boolean(friend.lastSeenAt && Date.now() - friend.lastSeenAt.getTime() <= 60_000),
+          },
           messages: conversation.messages,
           readAt: conversation.participantLowId === userId
             ? conversation.lastReadAtLow
             : conversation.lastReadAtHigh,
+          friendReadAt,
         },
       });
     }
@@ -132,8 +141,8 @@ export async function GET(request: Request) {
       db.friendship.findMany({
         where: { OR: [{ userLowId: userId }, { userHighId: userId }] },
         include: {
-          userLow: { select: { id: true, name: true, image: true, isActive: true } },
-          userHigh: { select: { id: true, name: true, image: true, isActive: true } },
+          userLow: { select: { id: true, name: true, image: true, isActive: true, lastSeenAt: true } },
+          userHigh: { select: { id: true, name: true, image: true, isActive: true, lastSeenAt: true } },
         },
         orderBy: { createdAt: "desc" },
       }),
@@ -152,8 +161,8 @@ export async function GET(request: Request) {
         backgroundImageUrl: true,
         lastReadAtLow: true,
         lastReadAtHigh: true,
-        participantLow: { select: { id: true, name: true, image: true, isActive: true } },
-        participantHigh: { select: { id: true, name: true, image: true, isActive: true } },
+        participantLow: { select: { id: true, name: true, image: true, isActive: true, lastSeenAt: true } },
+        participantHigh: { select: { id: true, name: true, image: true, isActive: true, lastSeenAt: true } },
         messages: {
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
@@ -188,7 +197,12 @@ export async function GET(request: Request) {
         id: conversation.id,
         theme: conversation.theme,
         backgroundImageUrl: conversation.backgroundImageUrl,
-        friend: { id: friend.id, name: friend.name, image: friend.image },
+        friend: {
+          id: friend.id,
+          name: friend.name,
+          image: friend.image,
+          online: Boolean(friend.lastSeenAt && Date.now() - friend.lastSeenAt.getTime() <= 60_000),
+        },
         lastMessage,
         unread: Boolean(lastMessage && hasUnreadMessage({
           senderId: lastMessage.senderId,

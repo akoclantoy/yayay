@@ -30,12 +30,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { FriendTogetherCelebration } from "@/components/messaging/friend-together-celebration";
+import { GroupChatPanel } from "@/components/messaging/group-chat-panel";
 import { PickupMessenger } from "@/components/messaging/pickup-messenger";
 import { cn } from "@/lib/utils";
 import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
 import { getSharedResidentQrCode } from "@/lib/resident-social";
 
-type Resident = { id: string; name: string | null; image: string | null; qrCode?: string };
+type Resident = { id: string; name: string | null; image: string | null; qrCode?: string; online?: boolean };
 type Friend = Resident & { createdAt?: string };
 type DirectoryResident = Resident & {
   qrCode: string;
@@ -83,6 +84,7 @@ type ConversationDetails = {
   friend: Resident;
   messages: Message[];
   readAt: string | null;
+  friendReadAt: string | null;
 };
 type MessengerData = {
   ownProfile: { qrCode: string; user: { name: string | null; image: string | null } } | null;
@@ -90,7 +92,7 @@ type MessengerData = {
   incomingRequests: FriendRequest[];
   outgoingRequests: FriendRequest[];
 };
-type Tab = "inbox" | "friends" | "requests" | "directory" | "profile";
+type Tab = "inbox" | "friends" | "requests" | "directory" | "groups" | "profile";
 
 function getMessagePreview(content: string) {
   return getSharedResidentQrCode(content) ? "Shared a resident QR code" : content;
@@ -165,6 +167,7 @@ export function ResidentMessenger({
   const [editMessageId, setEditMessageId] = useState<string | null>(null);
   const [editMessageText, setEditMessageText] = useState("");
   const [reactionPickerId, setReactionPickerId] = useState<string | null>(null);
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -335,6 +338,18 @@ export function ResidentMessenger({
     return () => {
       active = false;
     };
+  }, [activeConversationId, refreshOpenConversation]);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshOpenConversation(activeConversationId).catch((cause: unknown) => {
+          setError(getErrorMessage(cause));
+        });
+      }
+    }, 5000);
+    return () => window.clearInterval(interval);
   }, [activeConversationId, refreshOpenConversation]);
 
   useEffect(() => {
@@ -974,12 +989,13 @@ export function ResidentMessenger({
               </label>
             </div>
 
-            <nav className="grid grid-cols-5 gap-1 px-3 pb-3 sm:px-4" aria-label="Messenger sections">
+            <nav className="grid grid-cols-6 gap-1 px-3 pb-3 sm:px-4" aria-label="Messenger sections">
               {([
                 ["inbox", "Inbox", MessageCircle],
                 ["friends", "Friends", Users],
                 ["requests", "Requests", UserPlus],
                 ["directory", "Find Friend", Search],
+                ["groups", "Groups", Users],
                 ["profile", "My QR", QrCode],
               ] as const).map(([key, label, Icon]) => (
                 <button key={key} type="button" onClick={() => { setTab(key); setActiveFriendId(null); setActiveConversationId(null); setDetails(null); setProfile(null); }} className={cn("flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[9px] font-semibold transition sm:text-[10px]", tab === key ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
@@ -1080,6 +1096,12 @@ export function ResidentMessenger({
                   {!directoryLoading && !directoryResidents.length && <EmptyList icon={<Search />} title="No residents found" text={search ? "Try another name or clear your search." : "Resident accounts will appear here once they are registered."} />}
                   {directoryHasMore && <Button variant="outline" className="w-full" disabled={directoryLoading} onClick={() => void loadMoreResidents()}>{directoryLoading ? "Loading..." : "Load more residents"}</Button>}
                 </div>
+              ) : tab === "groups" ? (
+                <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/10 via-accent/10 to-secondary/10 p-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-primary shadow-sm"><Users className="h-5 w-5" /></div>
+                  <p className="mt-3 text-sm font-bold">Group chats</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Create a group and bring at least three of your resident friends together.</p>
+                </div>
               ) : (
                 <div className="rounded-2xl border border-border/70 bg-white p-4 text-center">
                   {data?.ownProfile?.qrCode ? <div className="mx-auto mb-4 w-fit rounded-2xl bg-white p-3 shadow-sm"><QRCode value={data.ownProfile.qrCode} size={168} /></div> : <div className="mx-auto mb-4 flex h-44 w-44 items-center justify-center rounded-2xl bg-muted text-muted-foreground"><QrCode className="h-10 w-10" /></div>}
@@ -1098,7 +1120,7 @@ export function ResidentMessenger({
                   <div className="flex min-w-0 items-center gap-3">
                     <button type="button" aria-label="Back to conversations" onClick={() => { setActiveFriendId(null); setActiveConversationId(null); setDetails(null); }} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>
                     <ProfileAvatar resident={activeFriend} size="h-11 w-11" />
-                    <div className="min-w-0"><p className="truncate text-sm font-bold">{displayName(activeFriend)}</p><p className="mt-0.5 text-xs text-primary">EcoRewards friend</p></div>
+                    <div className="min-w-0"><p className="truncate text-sm font-bold">{displayName(activeFriend)}</p><p className={cn("mt-0.5 text-xs", currentDetails?.friend.online ? "text-primary" : "text-muted-foreground")}>{currentDetails?.friend.online ? "Online" : "Offline"}</p></div>
                   </div>
                   <div className="flex items-center gap-1">
                     {onPickupMessages && (
@@ -1131,6 +1153,11 @@ export function ResidentMessenger({
                   {currentDetails?.messages.map((message) => {
                     const mine = message.senderId === residentId;
                     const sharedQrCode = getSharedResidentQrCode(message.content);
+                    const friendReadAt = currentDetails.friendReadAt ? new Date(currentDetails.friendReadAt).getTime() : 0;
+                    const wasSeen = mine && friendReadAt >= new Date(message.createdAt).getTime();
+                    const latestSeenMessageId = [...currentDetails.messages].reverse().find((item) =>
+                      item.senderId === residentId && friendReadAt >= new Date(item.createdAt).getTime(),
+                    )?.id;
                     const reactionCounts = REACTIONS.map((reaction) => ({
                       ...reaction,
                       count: message.reactions.filter((item) => item.kind === reaction.kind).length,
@@ -1158,6 +1185,14 @@ export function ResidentMessenger({
                           onPointerUp={finishReactionPress}
                           onPointerCancel={finishReactionPress}
                           onPointerLeave={finishReactionPress}
+                          onMouseEnter={() => setHoveredMessageId(message.id)}
+                          onMouseLeave={() => setHoveredMessageId((current) => current === message.id ? null : current)}
+                          onFocus={() => setHoveredMessageId(message.id)}
+                          onBlur={(event) => {
+                            if (!event.currentTarget.contains(event.relatedTarget)) {
+                              setHoveredMessageId((current) => current === message.id ? null : current);
+                            }
+                          }}
                           onClick={() => {
                             if (editMessageId !== message.id) toggleReactionPicker(message.id);
                           }}
@@ -1259,7 +1294,10 @@ export function ResidentMessenger({
                           )}>
                             {message.editedAt && <span className="mr-1">edited ·</span>}
                             {dateFormatter.format(new Date(message.createdAt))}
-                            {mine && !message.systemMessage && <CheckCheck className="ml-0.5 h-3 w-3" />}
+                            {mine && !message.systemMessage && <span className={cn("ml-1 inline-flex items-center gap-1", wasSeen ? "text-white" : currentDetails.friend.online ? "text-white/70" : "text-white/55")}>
+                              {wasSeen ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />}
+                              <span>{wasSeen ? "Seen" : currentDetails.friend.online ? "Delivered" : "Sent"}</span>
+                            </span>}
                             {mine && !message.systemMessage && !sharedQrCode && editMessageId !== message.id && (
                               <span className="ml-2 flex gap-1">
                                 <button
@@ -1284,7 +1322,7 @@ export function ResidentMessenger({
                             )}
                           </div>
                           <AnimatePresence>
-                            {reactionPickerId === message.id && (
+                            {(reactionPickerId === message.id || hoveredMessageId === message.id) && (
                               <motion.div
                                 initial={{ opacity: 0, scale: 0.82, y: 8 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1345,6 +1383,12 @@ export function ResidentMessenger({
                             </span>
                           ))}
                         </div>
+                        {mine && wasSeen && message.id === latestSeenMessageId && (
+                          <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground" title={`Seen by ${displayName(currentDetails.friend)}`}>
+                            <Avatar className="h-5 w-5 border border-white shadow-sm"><AvatarImage src={currentDetails.friend.image ?? undefined} alt={displayName(currentDetails.friend)} /><AvatarFallback>{displayName(currentDetails.friend).slice(0, 1)}</AvatarFallback></Avatar>
+                            <span>Seen</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1370,6 +1414,12 @@ export function ResidentMessenger({
           </section>
         </div>
       </section>
+
+      {tab === "groups" && <GroupChatPanel
+        residentId={residentId}
+        friends={data?.friends ?? []}
+        onClose={() => setTab("inbox")}
+      />}
 
       <FriendTogetherCelebration
         resident={{

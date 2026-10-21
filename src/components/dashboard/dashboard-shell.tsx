@@ -210,6 +210,28 @@ export function DashboardShell({
     return subscribeToRealtimeChanges(refresh);
   }, [refreshFriendTogether, refreshUnreadActivity, role, session?.user?.id]);
 
+  useEffect(() => {
+    if (role !== "RESIDENT" || !session?.user?.id) return;
+
+    const updatePresence = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetch("/api/resident/presence", { method: "POST", cache: "no-store" })
+        .then((response) => {
+          if (!response.ok) throw new Error("Presence update failed.");
+        })
+        .catch((error: unknown) => {
+          console.error("[dashboard] Could not update resident presence:", error);
+        });
+    };
+    updatePresence();
+    const interval = window.setInterval(updatePresence, 25_000);
+    document.addEventListener("visibilitychange", updatePresence);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", updatePresence);
+    };
+  }, [role, session?.user?.id]);
+
   if (role === "RESIDENT" && pathname === "/resident/messages") {
     return (
       <>

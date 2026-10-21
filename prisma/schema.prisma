@@ -97,6 +97,7 @@ model User {
   role          UserRole  @default(RESIDENT)
   phone         String?
   isActive      Boolean   @default(true)
+  lastSeenAt    DateTime?
   deletedAt     DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -131,6 +132,10 @@ model User {
   directConversationsHigh DirectConversation[]      @relation("DirectConversationHigh")
   directMessages          DirectMessage[]
   directMessageReactions  DirectMessageReaction[]
+  groupMemberships        GroupConversationMember[]
+  createdGroupChats       GroupConversation[]    @relation("GroupChatCreator")
+  groupMessages           GroupMessage[]
+  groupMessageReactions   GroupMessageReaction[]
   sentPointTransfers      PointTransfer[]           @relation("PointTransferSender")
   receivedPointTransfers  PointTransfer[]           @relation("PointTransferRecipient")
   blocksGiven             ResidentBlock[]           @relation("ResidentBlocker")
@@ -522,6 +527,70 @@ model DirectConversation {
   @@index([participantHighId, updatedAt])
   @@index([participantLowId, hiddenAtLow, updatedAt])
   @@index([participantHighId, hiddenAtHigh, updatedAt])
+}
+
+model GroupConversation {
+  id             String   @id @default(cuid())
+  name           String
+  imageUrl       String?  @db.Text
+  imagePublicId  String?
+  theme          String   @default("forest")
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  createdBy User                       @relation("GroupChatCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  members   GroupConversationMember[]
+  messages  GroupMessage[]
+
+  @@index([createdById, updatedAt])
+  @@index([updatedAt])
+}
+
+model GroupConversationMember {
+  id             String    @id @default(cuid())
+  groupId        String
+  userId         String
+  isAdmin        Boolean   @default(false)
+  lastReadAt     DateTime?
+  joinedAt       DateTime  @default(now())
+
+  group GroupConversation @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId, joinedAt])
+}
+
+model GroupMessage {
+  id        String    @id @default(cuid())
+  groupId   String
+  senderId  String
+  content   String    @db.Text
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  group     GroupConversation       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender    User                    @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  reactions GroupMessageReaction[]
+
+  @@index([groupId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+model GroupMessageReaction {
+  id        String                    @id @default(cuid())
+  messageId String
+  userId    String
+  kind      DirectMessageReactionKind
+  createdAt DateTime                  @default(now())
+
+  message GroupMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
 }
 
 model DirectMessage {
