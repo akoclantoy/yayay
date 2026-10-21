@@ -32,7 +32,32 @@ export async function uploadImage(
   return { url: result.secure_url, publicId: result.public_id };
 }
 
+export async function uploadVideo(
+  file: string,
+  folder = "recycling"
+): Promise<{ url: string; publicId: string }> {
+  if (
+    !process.env.CLOUDINARY_CLOUD_NAME ||
+    !process.env.CLOUDINARY_API_KEY ||
+    !process.env.CLOUDINARY_API_SECRET
+  ) {
+    throw new Error("Cloudinary is not configured");
+  }
+
+  const result = await cloudinary.uploader.upload(file, {
+    folder: `community-recycling/${folder}`,
+    resource_type: "video",
+  });
+
+  return { url: result.secure_url, publicId: result.public_id };
+}
+
 export async function deleteImage(publicId: string) {
   if (publicId === "dev-local") return;
   await cloudinary.uploader.destroy(publicId);
+}
+
+export async function deleteVideo(publicId: string) {
+  if (publicId === "dev-local") return;
+  await cloudinary.uploader.destroy(publicId, { resource_type: "video" });
 }

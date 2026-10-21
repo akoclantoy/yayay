@@ -8,11 +8,13 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
+  Forward,
   ImagePlus,
   MessageCircle,
   MapPin,
   MoreHorizontal,
   Ban,
+  Paperclip,
   Pencil,
   Trash2,
   UserRoundX,
@@ -31,6 +33,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { FriendTogetherCelebration } from "@/components/messaging/friend-together-celebration";
 import { GroupChatPanel } from "@/components/messaging/group-chat-panel";
+import { MessageMedia } from "@/components/messaging/message-media";
 import { PickupMessenger } from "@/components/messaging/pickup-messenger";
 import { cn } from "@/lib/utils";
 import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
@@ -53,6 +56,8 @@ type Message = {
   id: string;
   senderId: string;
   content: string;
+  mediaUrl: string | null;
+  mediaType: string | null;
   systemMessage: boolean;
   editedAt: string | null;
   createdAt: string;
@@ -65,6 +70,8 @@ type Conversation = {
   friend: Resident;
   lastMessage: {
     content: string;
+    mediaUrl: string | null;
+    mediaType: string | null;
     createdAt: string;
     senderId: string;
     systemMessage: boolean;
@@ -93,9 +100,11 @@ type MessengerData = {
   outgoingRequests: FriendRequest[];
 };
 type Tab = "inbox" | "friends" | "requests" | "directory" | "groups" | "profile";
+type ForwardGroup = { id: string; name: string; imageUrl: string | null };
 
-function getMessagePreview(content: string) {
-  return getSharedResidentQrCode(content) ? "Shared a resident QR code" : content;
+function getMessagePreview(content: string, mediaUrl?: string | null, mediaType?: string | null) {
+  if (getSharedResidentQrCode(content)) return "Shared a resident QR code";
+  return content || (mediaType?.startsWith("video/") ? "Shared a video" : mediaUrl ? "Shared a photo" : "");
 }
 
 const THEMES: Record<string, { label: string; background: string; accent: string }> = {
@@ -164,6 +173,10 @@ export function ResidentMessenger({
   const [details, setDetails] = useState<ConversationDetails | null>(null);
   const [search, setSearch] = useState("");
   const [messageText, setMessageText] = useState("");
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [forwardSource, setForwardSource] = useState<{ type: "direct" | "group"; messageId: string } | null>(null);
+  const [forwardGroups, setForwardGroups] = useState<ForwardGroup[]>([]);
+  const [forwarding, setForwarding] = useState(false);
   const [editMessageId, setEditMessageId] = useState<string | null>(null);
   const [editMessageText, setEditMessageText] = useState("");
   const [reactionPickerId, setReactionPickerId] = useState<string | null>(null);
@@ -186,6 +199,7 @@ export function ResidentMessenger({
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
   const [friendCelebration, setFriendCelebration] = useState<Resident | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const celebrationTimerRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
@@ -557,16 +571,28 @@ export function ResidentMessenger({
 
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!activeFriend || !messageText.trim()) return;
+    if (!activeFriend || (!messageText.trim() && !attachmentFile)) return;
     setWorking(true);
     setError(null);
     try {
-      const response = await requestJson<{ conversation: { id: string } }>("/api/resident/direct-messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ friendId: activeFriend.id, content: messageText }),
-      });
+      const response = attachmentFile
+        ? await (() => {
+            const form = new FormData();
+            form.set("friendId", activeFriend.id);
+            form.set("content", messageText);
+            form.set("media", attachmentFile);
+            return requestJson<{ conversation: { id: string } }>("/api/resident/direct-messages", {
+              method: "POST",
+              body: form,
+            });
+          })()
+        : await requestJson<{ conversation: { id: string } }>("/api/resident/direct-messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ friendId: activeFriend.id, content: messageText }),
+          });
       setMessageText("");
+      setAttachmentFile(null);
       setActiveFriendId(activeFriend.id);
       setActiveConversationId(response.conversation.id);
       await refresh();
@@ -575,6 +601,43 @@ export function ResidentMessenger({
       setError(getErrorMessage(cause));
     } finally {
       setWorking(false);
+    }
+  }
+
+  async function openForwardPicker(type: "direct" | "group", messageId: string) {
+    setError(null);
+    try {
+      const result = await requestJson<{ groups: ForwardGroup[] }>("/api/resident/groups");
+      setForwardGroups(result.groups);
+      setForwardSource({ type, messageId });
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    }
+  }
+
+  async function forwardMessage(destinationType: "direct" | "group", destinationId: string) {
+    if (!forwardSource) return;
+    setForwarding(true);
+    setError(null);
+    try {
+      await requestJson("/api/resident/message-forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceType: forwardSource.type,
+          messageId: forwardSource.messageId,
+          destinationType,
+          ...(destinationType === "direct" ? { friendId: destinationId } : { groupId: destinationId }),
+        }),
+      });
+      setForwardSource(null);
+      setNotice("Message forwarded.");
+      await refresh();
+      if (destinationType === "direct" && activeConversationId) await refreshOpenConversation(activeConversationId);
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setForwarding(false);
     }
   }
 
@@ -1024,7 +1087,7 @@ export function ResidentMessenger({
                           <span className={cn("truncate text-sm", item.unread ? "font-extrabold text-foreground" : "font-semibold")}>{displayName(item.friend)}</span>
                           <span className={cn("shrink-0 text-[10px]", item.unread ? "font-bold text-primary" : "text-muted-foreground")}>{item.lastMessage ? dateFormatter.format(new Date(item.lastMessage.createdAt)) : ""}</span>
                         </span>
-                        <span className={cn("mt-1 block truncate text-xs", item.unread ? "font-bold text-foreground" : "text-muted-foreground")}>{item.lastMessage ? getMessagePreview(item.lastMessage.content) : "Start a conversation"}</span>
+                        <span className={cn("mt-1 block truncate text-xs", item.unread ? "font-bold text-foreground" : "text-muted-foreground")}>{item.lastMessage ? getMessagePreview(item.lastMessage.content, item.lastMessage.mediaUrl, item.lastMessage.mediaType) : "Start a conversation"}</span>
                       </span>
                     </button>
                   )) : <EmptyList icon={<MessageCircle />} title="Your inbox is ready" text="Open a friend from your list to start chatting." action="Browse friends" onAction={() => setTab("friends")} />}
@@ -1177,7 +1240,7 @@ export function ResidentMessenger({
                           onPointerDown={(event) => {
                             if (
                               editMessageId !== message.id &&
-                              !(event.target instanceof Element && event.target.closest("button,textarea"))
+                              !(event.target instanceof Element && event.target.closest("button,textarea,video,input"))
                             ) {
                               startReactionPress(message.id, event);
                             }
@@ -1205,7 +1268,7 @@ export function ResidentMessenger({
                           onKeyDown={(event) => {
                             if (
                               editMessageId !== message.id &&
-                              !(event.target instanceof Element && event.target.closest("button,textarea")) &&
+                              !(event.target instanceof Element && event.target.closest("button,textarea,video,input")) &&
                               (event.key === "Enter" || event.key === " ")
                             ) {
                               event.preventDefault();
@@ -1285,6 +1348,11 @@ export function ResidentMessenger({
                                 Tap to verify and transfer points
                               </span>
                             </button>
+                          ) : message.mediaUrl ? (
+                            <>
+                              <MessageMedia src={message.mediaUrl} type={message.mediaType} alt="Chat message attachment" />
+                              {message.content && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.content}</p>}
+                            </>
                           ) : (
                             <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.content}</p>
                           )}
@@ -1298,9 +1366,9 @@ export function ResidentMessenger({
                               {wasSeen ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />}
                               <span>{wasSeen ? "Seen" : currentDetails.friend.online ? "Delivered" : "Sent"}</span>
                             </span>}
-                            {mine && !message.systemMessage && !sharedQrCode && editMessageId !== message.id && (
+                            {!message.systemMessage && !sharedQrCode && editMessageId !== message.id && (
                               <span className="ml-2 flex gap-1">
-                                <button
+                                {mine && !message.mediaUrl && <button
                                   type="button"
                                   aria-label="Edit message"
                                   title="Edit message"
@@ -1308,8 +1376,8 @@ export function ResidentMessenger({
                                   className="rounded p-1 transition hover:bg-white/15"
                                 >
                                   <Pencil className="h-3 w-3" />
-                                </button>
-                                <button
+                                </button>}
+                                {mine && <button
                                   type="button"
                                   aria-label="Delete message"
                                   title="Delete message"
@@ -1317,6 +1385,9 @@ export function ResidentMessenger({
                                   className="rounded p-1 transition hover:bg-white/15"
                                 >
                                   <Trash2 className="h-3 w-3" />
+                                </button>}
+                                <button type="button" aria-label="Forward message" title="Forward message" onClick={(event) => { event.stopPropagation(); void openForwardPicker("direct", message.id); }} className="rounded p-1 transition hover:bg-white/15">
+                                  <Forward className="h-3 w-3" />
                                 </button>
                               </span>
                             )}
@@ -1397,10 +1468,24 @@ export function ResidentMessenger({
                   <div ref={messageEndRef} />
                 </div>
 
-                <form onSubmit={(event) => void sendMessage(event)} className="flex items-end gap-2 border-t border-border/70 bg-white/90 px-3 py-3 sm:gap-3 sm:px-6">
-                  <button type="button" title="Choose a shared conversation theme" onClick={() => setThemeOpen((open) => !open)} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary/10"><ImagePlus className="h-5 w-5" /></button>
-                  <textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={1} placeholder={`Message ${displayName(activeFriend)}…`} className="max-h-28 min-h-11 flex-1 resize-y rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/10" />
-                  <Button type="submit" size="icon" className="mb-0.5 h-10 w-10 shrink-0 rounded-full" disabled={!messageText.trim() || working} aria-label="Send message"><Send className="h-4 w-4" /></Button>
+                <form onSubmit={(event) => void sendMessage(event)} className="flex flex-col gap-2 border-t border-border/70 bg-white/90 px-3 py-3 sm:px-6">
+                  {attachmentFile && <div className="flex items-center gap-2 rounded-xl bg-primary/5 px-3 py-2 text-xs"><span className="min-w-0 flex-1 truncate">{attachmentFile.name} · {(attachmentFile.size / (1024 * 1024)).toFixed(1)} MB</span><button type="button" aria-label="Remove attachment" onClick={() => setAttachmentFile(null)} className="rounded-full p-1 hover:bg-primary/10"><X className="h-3.5 w-3.5" /></button></div>}
+                  <div className="flex items-end gap-2 sm:gap-3">
+                    <input ref={mediaInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" className="sr-only" onChange={(event) => {
+                      const file = event.currentTarget.files?.[0] ?? null;
+                      event.currentTarget.value = "";
+                      if (file && !((file.type.startsWith("image/") && file.size <= 5 * 1024 * 1024) || (file.type.startsWith("video/") && file.size <= 25 * 1024 * 1024))) {
+                        setError("Choose an image up to 5 MB or a video up to 25 MB.");
+                        return;
+                      }
+                      setAttachmentFile(file);
+                      setError(null);
+                    }} />
+                    <button type="button" title="Attach an image or video" aria-label="Attach an image or video" onClick={() => mediaInputRef.current?.click()} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Paperclip className="h-5 w-5" /></button>
+                    <button type="button" title="Choose a shared conversation theme" onClick={() => setThemeOpen((open) => !open)} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary/10"><ImagePlus className="h-5 w-5" /></button>
+                    <textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={1} placeholder={`Message ${displayName(activeFriend)}…`} className="max-h-28 min-h-11 flex-1 resize-y rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/10" />
+                    <Button type="submit" size="icon" className="mb-0.5 h-10 w-10 shrink-0 rounded-full" disabled={(!messageText.trim() && !attachmentFile) || working} aria-label="Send message"><Send className="h-4 w-4" /></Button>
+                  </div>
                 </form>
               </>
             ) : (
@@ -1419,6 +1504,7 @@ export function ResidentMessenger({
         residentId={residentId}
         friends={data?.friends ?? []}
         onClose={() => setTab("inbox")}
+        onForward={(messageId) => void openForwardPicker("group", messageId)}
       />}
 
       <FriendTogetherCelebration
@@ -1433,6 +1519,8 @@ export function ResidentMessenger({
       <div id="resident-qr-image-reader" className="fixed left-[-10000px] top-0 h-px w-px overflow-hidden" aria-hidden="true" />
 
       {(error || notice) && <div role={error ? "alert" : "status"} className={cn("fixed left-1/2 top-5 z-[80] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 text-sm shadow-xl", error ? "bg-danger text-white" : "bg-primary text-white")}><span>{error ?? notice}</span><button type="button" aria-label="Dismiss notification" onClick={() => { setError(null); setNotice(null); }}><X className="h-4 w-4" /></button></div>}
+
+      {forwardSource && <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="forward-message-title"><div className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6"><div className="flex items-start justify-between"><div><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Forward className="h-5 w-5" /></span><h2 id="forward-message-title" className="mt-3 text-lg font-bold">Forward message</h2><p className="mt-1 text-sm text-muted-foreground">Choose a friend or group to share it with.</p></div><button type="button" aria-label="Close forwarding dialog" onClick={() => setForwardSource(null)} className="rounded-full p-2 text-muted-foreground transition hover:bg-muted"><X className="h-4 w-4" /></button></div><div className="mt-5 space-y-5"><section><h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Friends</h3><div className="max-h-48 space-y-1 overflow-y-auto">{(data?.friends ?? []).map((friend) => <button key={friend.id} type="button" disabled={forwarding} onClick={() => void forwardMessage("direct", friend.id)} className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition hover:bg-primary/5 disabled:opacity-50"><ProfileAvatar resident={friend} size="h-9 w-9" /><span className="min-w-0 flex-1 truncate text-sm font-medium">{displayName(friend)}</span><Forward className="h-4 w-4 text-muted-foreground" /></button>)}{!data?.friends.length && <p className="rounded-xl bg-muted/50 p-3 text-center text-sm text-muted-foreground">No friends available.</p>}</div></section><section><h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Group chats</h3><div className="max-h-40 space-y-1 overflow-y-auto">{forwardGroups.map((group) => <button key={group.id} type="button" disabled={forwarding} onClick={() => void forwardMessage("group", group.id)} className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition hover:bg-primary/5 disabled:opacity-50"><Avatar className="h-9 w-9"><AvatarImage src={group.imageUrl ?? undefined} alt={group.name} /><AvatarFallback><Users className="h-4 w-4" /></AvatarFallback></Avatar><span className="min-w-0 flex-1 truncate text-sm font-medium">{group.name}</span><Forward className="h-4 w-4 text-muted-foreground" /></button>)}{!forwardGroups.length && <p className="rounded-xl bg-muted/50 p-3 text-center text-sm text-muted-foreground">No group chats available.</p>}</div></section></div><Button type="button" variant="outline" className="mt-5 w-full" disabled={forwarding} onClick={() => setForwardSource(null)}>Cancel</Button></div></div>}
 
       {shareQrOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="share-qr-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl"><div className="mb-4 flex items-center justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><QrCode className="h-5 w-5" /></span><button type="button" aria-label="Close QR code" onClick={() => setShareQrOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted"><X className="h-4 w-4" /></button></div><h2 id="share-qr-title" className="text-lg font-bold">Share your QR Code</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">Let your friend scan this code to verify your account before a points transfer.</p>{data?.ownProfile?.qrCode ? <div className="mx-auto mt-5 w-fit rounded-2xl border border-border/70 bg-white p-4 shadow-sm"><QRCode value={data.ownProfile.qrCode} size={216} /></div> : <div role="alert" className="mt-5 rounded-xl bg-danger/10 p-3 text-sm text-danger">Your resident QR code is unavailable.</div>}<p className="mt-3 text-xs font-medium text-muted-foreground">{data?.ownProfile?.user.name ?? residentName}</p><Button className="mt-5 w-full" disabled={working || !data?.ownProfile?.qrCode} onClick={() => void shareQrInConversation()}><QrCode className="h-4 w-4" />{working ? "Sharing..." : "Share in this conversation"}</Button></div></div>}
 

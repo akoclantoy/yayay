@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
-import { deleteImage, uploadImage } from "@/lib/cloudinary";
+import { deleteImage, deleteVideo, uploadImage, uploadVideo } from "@/lib/cloudinary";
 import { db } from "@/lib/db";
 
 const createSchema = z.object({
@@ -12,7 +12,7 @@ const createSchema = z.object({
 const messageSchema = z.object({
   action: z.literal("message"),
   groupId: z.string().min(1),
-  content: z.string().trim().min(1).max(2000),
+  content: z.string().trim().max(2000).optional(),
 });
 const updateSchema = z.object({
   action: z.enum(["read", "react", "settings"]),
@@ -22,7 +22,9 @@ const updateSchema = z.object({
 }).refine((input) => input.action !== "react" || Boolean(input.messageId && input.reaction));
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
+const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 
 function asDataUrl(file: File, bytes: Buffer) {
   return `data:${file.type};base64,${bytes.toString("base64")}`;
@@ -70,6 +72,8 @@ export async function GET(request: Request) {
               id: true,
               senderId: true,
               content: true,
+              mediaUrl: true,
+              mediaType: true,
               createdAt: true,
               reactions: {
                 select: { userId: true, kind: true },
@@ -99,7 +103,7 @@ export async function GET(request: Request) {
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { senderId: true, content: true, createdAt: true },
+          select: { senderId: true, content: true, mediaUrl: true, mediaType: true, createdAt: true },
         },
       },
     });
@@ -130,18 +134,20 @@ export async function POST(request: Request) {
   if ("error" in authResult) return authResult.error;
   const userId = authResult.session.user.id;
   let uploadedPublicId: string | undefined;
+  let uploadedMediaType: string | null = null;
 
   try {
     if ((request.headers.get("content-type") ?? "").includes("application/json")) {
       const input = messageSchema.parse(await request.json());
       const membership = await getMembership(input.groupId, userId);
       if (!membership) return NextResponse.json({ error: "Group not found" }, { status: 404 });
+      if (!input.content) return NextResponse.json({ error: "Write a message or attach a photo or video." }, { status: 400 });
       const message = await db.$transaction(async (tx) => {
         const created = await tx.groupMessage.create({
           data: {
             groupId: input.groupId,
             senderId: userId,
-            content: input.content,
+            content: input.content ?? "",
           },
           select: { id: true, senderId: true, content: true, createdAt: true },
         });
@@ -155,6 +161,57 @@ export async function POST(request: Request) {
     }
 
     const form = await request.formData();
+    if (form.get("action") === "message") {
+      const input = messageSchema.parse({
+        action: form.get("action"),
+        groupId: form.get("groupId"),
+        content: form.get("content") || undefined,
+      });
+      const fileValue = form.get("media");
+      if (fileValue !== null && !(fileValue instanceof File)) {
+        return NextResponse.json({ error: "Invalid media upload" }, { status: 400 });
+      }
+      const file = fileValue instanceof File ? fileValue : null;
+      if (file && !(
+        (ALLOWED_IMAGE_TYPES.has(file.type) && file.size > 0 && file.size <= MAX_IMAGE_BYTES) ||
+        (ALLOWED_VIDEO_TYPES.has(file.type) && file.size > 0 && file.size <= MAX_VIDEO_BYTES)
+      )) {
+        return NextResponse.json({ error: "Choose an image up to 5 MB or a video up to 25 MB (MP4, WebM, or MOV)." }, { status: 400 });
+      }
+      if (!input.content && !file) {
+        return NextResponse.json({ error: "Write a message or attach a photo or video." }, { status: 400 });
+      }
+      const membership = await getMembership(input.groupId, userId);
+      if (!membership) return NextResponse.json({ error: "Group not found" }, { status: 404 });
+      if (file) {
+        const encoded = Buffer.from(await file.arrayBuffer()).toString("base64");
+        const dataUrl = `data:${file.type};base64,${encoded}`;
+        const uploaded = file.type.startsWith("video/")
+          ? await uploadVideo(dataUrl, "resident-group-messages")
+          : await uploadImage(dataUrl, "resident-group-messages");
+        uploadedPublicId = uploaded.publicId;
+        uploadedMediaType = file.type;
+        const created = await db.groupMessage.create({
+          data: {
+            groupId: input.groupId,
+            senderId: userId,
+            content: input.content ?? "",
+            mediaUrl: uploaded.url,
+            mediaType: file.type,
+            mediaPublicId: uploaded.publicId,
+          },
+          select: { id: true, senderId: true, content: true, mediaUrl: true, mediaType: true, createdAt: true },
+        });
+        await db.groupConversation.update({ where: { id: input.groupId }, data: { updatedAt: created.createdAt } });
+        return NextResponse.json({ message: created }, { status: 201 });
+      }
+      const created = await db.groupMessage.create({
+        data: { groupId: input.groupId, senderId: userId, content: input.content ?? "" },
+        select: { id: true, senderId: true, content: true, mediaUrl: true, mediaType: true, createdAt: true },
+      });
+      await db.groupConversation.update({ where: { id: input.groupId }, data: { updatedAt: created.createdAt } });
+      return NextResponse.json({ message: created }, { status: 201 });
+    }
     const input = createSchema.parse({
       name: form.get("name"),
       memberIds: JSON.parse(String(form.get("memberIds") ?? "[]")),
@@ -232,13 +289,20 @@ export async function POST(request: Request) {
   } catch (error) {
     if (uploadedPublicId) {
       try {
-        await deleteImage(uploadedPublicId);
+        if (uploadedMediaType?.startsWith("video/")) {
+          await deleteVideo(uploadedPublicId);
+        } else {
+          await deleteImage(uploadedPublicId);
+        }
       } catch (cleanupError) {
         console.error("Failed to clean up an unused group image", cleanupError);
       }
     }
     if (error instanceof z.ZodError || error instanceof SyntaxError) {
       return NextResponse.json({ error: "Enter a group name and invite at least three friends" }, { status: 400 });
+    }
+    if (error instanceof Error && error.message === "Cloudinary is not configured") {
+      return NextResponse.json({ error: "Photo and video messaging requires Cloudinary configuration." }, { status: 503 });
     }
     console.error("Failed to create resident group chat", error);
     return NextResponse.json({ error: "Unable to create group chat" }, { status: 500 });

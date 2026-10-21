@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Check, ImagePlus, MessageCircle, Palette, Plus, Send, Settings2, Users, X } from "lucide-react";
+import { ArrowLeft, Check, Forward, ImagePlus, MessageCircle, Palette, Paperclip, Plus, Send, Settings2, Users, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { MessageMedia } from "@/components/messaging/message-media";
 import { cn } from "@/lib/utils";
 
 type Resident = { id: string; name: string | null; image: string | null };
@@ -14,7 +15,7 @@ type GroupSummary = {
   imageUrl: string | null;
   theme: string;
   unread: boolean;
-  lastMessage: { senderId: string; content: string; createdAt: string } | null;
+  lastMessage: { senderId: string; content: string; mediaUrl: string | null; mediaType: string | null; createdAt: string } | null;
 };
 type GroupMember = {
   userId: string;
@@ -26,6 +27,8 @@ type GroupMessage = {
   id: string;
   senderId: string;
   content: string;
+  mediaUrl: string | null;
+  mediaType: string | null;
   createdAt: string;
   reactions: { userId: string; kind: string }[];
 };
@@ -78,10 +81,12 @@ export function GroupChatPanel({
   residentId,
   friends,
   onClose,
+  onForward,
 }: {
   residentId: string;
   friends: Resident[];
   onClose: () => void;
+  onForward: (messageId: string) => void;
 }) {
   const [groups, setGroups] = useState<GroupSummary[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -93,8 +98,10 @@ export function GroupChatPanel({
   const [theme, setTheme] = useState<keyof typeof THEMES>("forest");
   const [photo, setPhoto] = useState<File | null>(null);
   const [message, setMessage] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
   const currentTheme = THEMES[(details?.theme ?? selectedGroup?.theme ?? "forest") as keyof typeof THEMES] ?? THEMES.forest;
@@ -190,16 +197,26 @@ export function GroupChatPanel({
 
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedGroupId || !message.trim()) return;
+    if (!selectedGroupId || (!message.trim() && !attachment)) return;
     setWorking(true);
     setError(null);
     try {
-      await requestJson("/api/resident/groups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "message", groupId: selectedGroupId, content: message }),
-      });
+      if (attachment) {
+        const form = new FormData();
+        form.set("action", "message");
+        form.set("groupId", selectedGroupId);
+        form.set("content", message);
+        form.set("media", attachment);
+        await requestJson("/api/resident/groups", { method: "POST", body: form });
+      } else {
+        await requestJson("/api/resident/groups", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "message", groupId: selectedGroupId, content: message }),
+        });
+      }
       setMessage("");
+      setAttachment(null);
       await loadDetails(selectedGroupId);
       await loadGroups();
     } catch (cause) {
@@ -289,10 +306,12 @@ export function GroupChatPanel({
                   <div className={cn("max-w-[min(82%,560px)]", mine ? "items-end" : "items-start")}>
                     {!mine && <p className="mb-1 ml-1 text-[10px] font-semibold text-muted-foreground">{sender ? displayName(sender) : "Group member"}</p>}
                     <div className={cn("rounded-2xl px-4 py-3 shadow-sm", mine ? "rounded-br-md bg-primary text-white" : "rounded-bl-md border border-white/70 bg-white/90 text-foreground")}>
-                      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{item.content}</p>
+                      {item.mediaUrl && <MessageMedia src={item.mediaUrl} type={item.mediaType} alt="Group message attachment" />}
+                      {item.content && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{item.content}</p>}
                       <p className={cn("mt-2 text-right text-[10px]", mine ? "text-white/70" : "text-muted-foreground")}>{new Intl.DateTimeFormat("en-PH", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }).format(new Date(item.createdAt))}</p>
                     </div>
                     <div className={cn("mt-1 flex items-center gap-1", mine && "justify-end")}>
+                      <button type="button" title="Forward message" aria-label="Forward message" onClick={() => onForward(item.id)} className="mr-1 rounded-lg p-1.5 text-muted-foreground transition hover:bg-white hover:text-primary"><Forward className="h-3.5 w-3.5" /></button>
                       {REACTIONS.map((reaction) => {
                         const count = item.reactions.filter((entry) => entry.kind === reaction.kind).length;
                         const selected = item.reactions.some((entry) => entry.kind === reaction.kind && entry.userId === residentId);
@@ -310,9 +329,23 @@ export function GroupChatPanel({
             })}
             {!details && <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading group conversation…</div>}
           </div>
-          <form onSubmit={(event) => void sendMessage(event)} className="flex items-end gap-2 border-t border-border/70 bg-white/95 px-3 py-3 sm:px-6">
+          <form onSubmit={(event) => void sendMessage(event)} className="flex flex-col gap-2 border-t border-border/70 bg-white/95 px-3 py-3 sm:px-6">
+            {attachment && <div className="flex items-center gap-2 rounded-xl bg-primary/5 px-3 py-2 text-xs"><span className="min-w-0 flex-1 truncate">{attachment.name} · {(attachment.size / (1024 * 1024)).toFixed(1)} MB</span><button type="button" aria-label="Remove attachment" onClick={() => setAttachment(null)} className="rounded-full p-1 hover:bg-primary/10"><X className="h-3.5 w-3.5" /></button></div>}
+            <div className="flex items-end gap-2">
+            <input ref={mediaInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" className="sr-only" onChange={(event) => {
+              const file = event.currentTarget.files?.[0] ?? null;
+              event.currentTarget.value = "";
+              if (file && !((file.type.startsWith("image/") && file.size <= 5 * 1024 * 1024) || (file.type.startsWith("video/") && file.size <= 25 * 1024 * 1024))) {
+                setError("Choose an image up to 5 MB or a video up to 25 MB.");
+                return;
+              }
+              setAttachment(file);
+              setError(null);
+            }} />
+            <button type="button" title="Attach an image or video" aria-label="Attach an image or video" onClick={() => mediaInputRef.current?.click()} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Paperclip className="h-5 w-5" /></button>
             <textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={1} placeholder={`Message ${selectedGroup.name}…`} className="max-h-28 min-h-11 flex-1 resize-y rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10" />
-            <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={!message.trim() || working} aria-label="Send group message"><Send className="h-4 w-4" /></Button>
+            <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={(!message.trim() && !attachment) || working} aria-label="Send group message"><Send className="h-4 w-4" /></Button>
+            </div>
           </form>
         </section>
       ) : (
@@ -326,7 +359,7 @@ export function GroupChatPanel({
             {groups.length ? <div className="grid gap-3 sm:grid-cols-2">{groups.map((group) => (
               <button key={group.id} type="button" onClick={() => { setDetails(null); setSelectedGroupId(group.id); }} className="flex items-center gap-3 rounded-2xl border border-border/60 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
                 <span className="relative"><GroupAvatar imageUrl={group.imageUrl} name={group.name} size="h-12 w-12" />{group.unread && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-red-500" />}</span>
-                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{group.name}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{group.lastMessage?.content ?? "Start your group conversation"}</span></span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{group.name}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{group.lastMessage?.content || (group.lastMessage?.mediaType?.startsWith("video/") ? "Shared a video" : group.lastMessage?.mediaUrl ? "Shared a photo" : "Start your group conversation")}</span></span>
                 <MessageCircle className="h-4 w-4 text-primary" />
               </button>
             ))}</div> : <div className="rounded-3xl border border-dashed border-border bg-white p-8 text-center"><Users className="mx-auto h-9 w-9 text-primary/60" /><p className="mt-3 font-semibold">Your group chats start here</p><p className="mt-1 text-sm text-muted-foreground">Create a group and invite three or more friends.</p><Button className="mt-4" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" />Create your first group</Button></div>}

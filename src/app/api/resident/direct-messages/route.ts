@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
+import { deleteImage, deleteVideo, uploadImage, uploadVideo } from "@/lib/cloudinary";
 import { db } from "@/lib/db";
 import {
   canonicalDirectConversationPair,
@@ -14,7 +15,11 @@ const messageSchema = z.object({
   action: z.enum(["message", "share_qr"]).optional(),
   friendId: z.string().min(1),
   content: z.string().trim().min(1).max(2000).optional(),
-}).refine((value) => value.action === "share_qr" || Boolean(value.content));
+});
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 
 const actionSchema = z.object({
   conversationId: z.string().min(1).optional(),
@@ -86,6 +91,8 @@ export async function GET(request: Request) {
               senderId: true,
               content: true,
               systemMessage: true,
+              mediaUrl: true,
+              mediaType: true,
               editedAt: true,
               createdAt: true,
               reactions: { select: { userId: true, kind: true } },
@@ -169,6 +176,8 @@ export async function GET(request: Request) {
           take: 1,
           select: {
             content: true,
+            mediaUrl: true,
+            mediaType: true,
             createdAt: true,
             senderId: true,
             systemMessage: true,
@@ -487,8 +496,33 @@ export async function POST(request: Request) {
   if ("error" in authResult) return authResult.error;
   const userId = authResult.session.user.id;
 
+  let uploaded: { url: string; publicId: string } | null = null;
+  let uploadedMediaType: string | null = null;
   try {
-    const { action, friendId, content } = messageSchema.parse(await request.json());
+    const isFormData = (request.headers.get("content-type") ?? "").includes("multipart/form-data");
+    const form = isFormData ? await request.formData() : null;
+    const fileValue = form?.get("media");
+    if (fileValue !== null && fileValue !== undefined && !(fileValue instanceof File)) {
+      return NextResponse.json({ error: "Invalid media upload" }, { status: 400 });
+    }
+    const file = fileValue instanceof File ? fileValue : null;
+    const body = isFormData
+      ? {
+          action: "message" as const,
+          friendId: String(form?.get("friendId") ?? ""),
+          content: String(form?.get("content") ?? "").trim() || undefined,
+        }
+      : await request.json();
+    const { action, friendId, content } = messageSchema.parse(body);
+    if (file && !(
+      (IMAGE_TYPES.has(file.type) && file.size > 0 && file.size <= MAX_IMAGE_BYTES) ||
+      (VIDEO_TYPES.has(file.type) && file.size > 0 && file.size <= MAX_VIDEO_BYTES)
+    )) {
+      return NextResponse.json({ error: "Choose an image up to 5 MB or a video up to 25 MB (MP4, WebM, or MOV)." }, { status: 400 });
+    }
+    if (!content && !file && action !== "share_qr") {
+      return NextResponse.json({ error: "Write a message or attach a photo or video." }, { status: 400 });
+    }
     if (friendId === userId) return NextResponse.json({ error: "You cannot message yourself" }, { status: 400 });
     const friendship = await isFriend(userId, friendId);
     if (!friendship) return NextResponse.json({ error: "You can message friends only" }, { status: 403 });
@@ -519,12 +553,21 @@ export async function POST(request: Request) {
       messageContent = createResidentQrMessage(profile.qrCode);
     }
     if (!messageContent) {
-      return NextResponse.json({ error: "Message content is required" }, { status: 400 });
+      if (!file) return NextResponse.json({ error: "Message content is required" }, { status: 400 });
+      messageContent = "";
     }
-    if (action !== "share_qr" && getSharedResidentQrCode(messageContent) !== null) {
+    if (action !== "share_qr" && messageContent && getSharedResidentQrCode(messageContent) !== null) {
       return NextResponse.json({ error: "Use the QR sharing action to share a resident code" }, { status: 400 });
     }
 
+    if (file) {
+      const encoded = Buffer.from(await file.arrayBuffer()).toString("base64");
+      const dataUrl = `data:${file.type};base64,${encoded}`;
+      uploaded = file.type.startsWith("video/")
+        ? await uploadVideo(dataUrl, "resident-direct-messages")
+        : await uploadImage(dataUrl, "resident-direct-messages");
+      uploadedMediaType = file.type;
+    }
     const pair = canonicalDirectConversationPair(userId, friendId);
     const result = await db.$transaction(async (tx) => {
       const conversation = await tx.directConversation.upsert({
@@ -535,8 +578,15 @@ export async function POST(request: Request) {
         update: { hiddenAtLow: null, hiddenAtHigh: null },
       });
       const message = await tx.directMessage.create({
-        data: { conversationId: conversation.id, senderId: userId, content: messageContent },
-        select: { id: true, senderId: true, content: true, createdAt: true },
+        data: {
+          conversationId: conversation.id,
+          senderId: userId,
+          content: messageContent,
+          mediaUrl: uploaded?.url,
+          mediaType: file?.type,
+          mediaPublicId: uploaded?.publicId,
+        },
+        select: { id: true, senderId: true, content: true, mediaUrl: true, mediaType: true, createdAt: true },
       });
       await tx.directConversation.update({
         where: { id: conversation.id },
@@ -546,8 +596,22 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
+    if (uploaded) {
+      try {
+        if (uploadedMediaType?.startsWith("video/")) {
+          await deleteVideo(uploaded.publicId);
+        } else {
+          await deleteImage(uploaded.publicId);
+        }
+      } catch (cleanupError) {
+        console.error("Failed to clean up an unused direct message upload", cleanupError);
+      }
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.flatten() }, { status: 400 });
+    }
+    if (error instanceof Error && error.message === "Cloudinary is not configured") {
+      return NextResponse.json({ error: "Photo and video messaging requires Cloudinary configuration." }, { status: 503 });
     }
     console.error("Failed to send resident direct message", error);
     return NextResponse.json({ error: "Unable to send message" }, { status: 500 });
