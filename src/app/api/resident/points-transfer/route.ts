@@ -10,6 +10,7 @@ import {
 const transferSchema = z.object({
   recipientQrCode: z.string().trim().min(1).max(200),
   amount: z.number().int().positive().max(10_000),
+  groupId: z.string().min(1).optional(),
 });
 
 export async function GET() {
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
   const senderId = authResult.session.user.id;
 
   try {
-    const { recipientQrCode, amount } = transferSchema.parse(await request.json());
+    const { recipientQrCode, amount, groupId } = transferSchema.parse(await request.json());
     const recipientProfile = await db.residentProfile.findUnique({
       where: { qrCode: recipientQrCode },
       select: {
@@ -54,9 +55,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You cannot transfer points to yourself" }, { status: 400 });
     }
 
-    const pair = canonicalFriendshipPair(senderId, recipientId);
-    if (!(await db.friendship.findUnique({ where: { userLowId_userHighId: pair } }))) {
-      return NextResponse.json({ error: "You can transfer points to friends only" }, { status: 403 });
+    if (groupId) {
+      const memberships = await db.groupConversationMember.findMany({
+        where: { groupId, userId: { in: [senderId, recipientId] } },
+        select: { userId: true },
+      });
+      if (memberships.length !== 2) {
+        return NextResponse.json({ error: "Points can only be sent to members of this group" }, { status: 403 });
+      }
+    } else {
+      const pair = canonicalFriendshipPair(senderId, recipientId);
+      if (!(await db.friendship.findUnique({ where: { userLowId_userHighId: pair } }))) {
+        return NextResponse.json({ error: "You can transfer points to friends only" }, { status: 403 });
+      }
     }
 
     const transfer = await db.$transaction(async (tx) => {
@@ -81,35 +92,44 @@ export async function POST(request: Request) {
       const pointTransfer = await tx.pointTransfer.create({
         data: { senderId, recipientId, amount },
       });
-      const conversationPair = canonicalDirectConversationPair(senderId, recipientId);
-      const conversation = await tx.directConversation.upsert({
-        where: {
-          participantLowId_participantHighId: conversationPair,
-        },
-        create: conversationPair,
-        update: { hiddenAtLow: null, hiddenAtHigh: null },
-      });
       const senderName = authResult.session.user.name?.trim() || "EcoRewards resident";
       const recipientName = recipientProfile.user.name?.trim() || "EcoRewards resident";
-      await tx.directMessage.create({
-        data: {
-          conversationId: conversation.id,
-          senderId,
-          systemMessage: true,
-          content: [
-            "Points transfer completed",
-            `From: ${senderName}`,
-            `To: ${recipientName}`,
-            `Amount: ${amount.toLocaleString("en-US")} points`,
-            `Completed: ${pointTransfer.createdAt.toISOString()}`,
-            `Transfer reference: ${pointTransfer.id}`,
-          ].join("\n"),
-        },
-      });
-      await tx.directConversation.update({
-        where: { id: conversation.id },
-        data: { updatedAt: new Date() },
-      });
+      const transferMessage = [
+        "Points transfer completed",
+        `From: ${senderName}`,
+        `To: ${recipientName}`,
+        `Amount: ${amount.toLocaleString("en-US")} points`,
+        `Completed: ${pointTransfer.createdAt.toISOString()}`,
+        `Transfer reference: ${pointTransfer.id}`,
+      ].join("\n");
+      let conversationId: string | null = null;
+      if (groupId) {
+        const groupMessage = await tx.groupMessage.create({
+          data: { groupId, senderId, content: transferMessage },
+          select: { createdAt: true },
+        });
+        await tx.groupConversation.update({
+          where: { id: groupId },
+          data: { updatedAt: groupMessage.createdAt },
+        });
+      } else {
+        const conversationPair = canonicalDirectConversationPair(senderId, recipientId);
+        const conversation = await tx.directConversation.upsert({
+          where: {
+            participantLowId_participantHighId: conversationPair,
+          },
+          create: conversationPair,
+          update: { hiddenAtLow: null, hiddenAtHigh: null },
+        });
+        await tx.directMessage.create({
+          data: { conversationId: conversation.id, senderId, systemMessage: true, content: transferMessage },
+        });
+        await tx.directConversation.update({
+          where: { id: conversation.id },
+          data: { updatedAt: new Date() },
+        });
+        conversationId = conversation.id;
+      }
       await tx.rewardTransaction.createMany({
         data: [
           {
@@ -144,7 +164,7 @@ export async function POST(request: Request) {
       return {
         id: pointTransfer.id,
         balance: updatedSender.balance,
-        conversationId: conversation.id,
+        conversationId,
       };
     });
 
@@ -154,6 +174,7 @@ export async function POST(request: Request) {
       amount,
       balance: transfer.balance,
       conversationId: transfer.conversationId,
+      groupId,
     }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {

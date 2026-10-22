@@ -535,6 +535,8 @@ model GroupConversation {
   imageUrl       String?  @db.Text
   imagePublicId  String?
   theme          String   @default("forest")
+  themeImageUrl  String?  @db.Text
+  themeImagePublicId String?
   createdById    String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

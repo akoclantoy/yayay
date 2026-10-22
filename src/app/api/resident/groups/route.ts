@@ -10,13 +10,14 @@ const createSchema = z.object({
   theme: z.enum(["forest", "ocean", "sunset", "lavender", "midnight"]).default("forest"),
 });
 const messageSchema = z.object({
-  action: z.literal("message"),
+  action: z.enum(["message", "share_qr"]),
   groupId: z.string().min(1),
   content: z.string().trim().max(2000).optional(),
 });
 const updateSchema = z.object({
-  action: z.enum(["read", "react", "settings"]),
+  action: z.enum(["read", "react", "settings", "add_members"]),
   groupId: z.string().min(1),
+  memberIds: z.array(z.string().min(1)).min(1).max(50).optional(),
   messageId: z.string().min(1).optional(),
   reaction: z.enum(["LIKE", "HEART", "FUNNY", "ANGRY"]).optional(),
 }).refine((input) => input.action !== "react" || Boolean(input.messageId && input.reaction));
@@ -55,6 +56,7 @@ export async function GET(request: Request) {
           name: true,
           imageUrl: true,
           theme: true,
+          themeImageUrl: true,
           createdById: true,
           members: {
             orderBy: { joinedAt: "asc" },
@@ -95,6 +97,7 @@ export async function GET(request: Request) {
         name: true,
         imageUrl: true,
         theme: true,
+        themeImageUrl: true,
         updatedAt: true,
         members: {
           where: { userId },
@@ -117,6 +120,7 @@ export async function GET(request: Request) {
           name: group.name,
           imageUrl: group.imageUrl,
           theme: group.theme,
+          themeImageUrl: group.themeImageUrl,
           updatedAt: group.updatedAt,
           lastMessage,
           unread: Boolean(lastMessage && lastMessage.senderId !== userId &&
@@ -136,21 +140,42 @@ export async function POST(request: Request) {
   const userId = authResult.session.user.id;
   let uploadedPublicId: string | undefined;
   let uploadedMediaType: string | null = null;
+  let messageContent = "";
 
   try {
     if ((request.headers.get("content-type") ?? "").includes("application/json")) {
       const input = messageSchema.parse(await request.json());
       const membership = await getMembership(input.groupId, userId);
       if (!membership) return NextResponse.json({ error: "Group not found" }, { status: 404 });
-      if (!input.content) return NextResponse.json({ error: "Write a message or attach a photo or video." }, { status: 400 });
+      messageContent = input.content ?? "";
+      if (input.action === "share_qr") {
+        const profile = await db.residentProfile.findUnique({
+          where: { userId },
+          select: { qrCode: true },
+        });
+        if (!profile) return NextResponse.json({ error: "Resident profile not found" }, { status: 404 });
+        messageContent = `ERGROUPQR:${profile.qrCode}`;
+      } else if (!messageContent) {
+        return NextResponse.json({ error: "Write a message or attach a photo or video." }, { status: 400 });
+      } else if (messageContent.startsWith("ERGROUPQR:")) {
+        return NextResponse.json({ error: "Use the QR sharing action to share a resident code" }, { status: 400 });
+      }
       const message = await db.$transaction(async (tx) => {
         const created = await tx.groupMessage.create({
           data: {
             groupId: input.groupId,
             senderId: userId,
-            content: input.content ?? "",
+            content: messageContent,
           },
-          select: { id: true, senderId: true, content: true, createdAt: true },
+          select: {
+            id: true,
+            senderId: true,
+            content: true,
+            mediaUrl: true,
+            mediaType: true,
+            createdAt: true,
+            reactions: { select: { userId: true, kind: true } },
+          },
         });
         await tx.groupConversation.update({
           where: { id: input.groupId },
@@ -168,6 +193,9 @@ export async function POST(request: Request) {
         groupId: form.get("groupId"),
         content: form.get("content") || undefined,
       });
+      if (input.action !== "message") {
+        return NextResponse.json({ error: "Use JSON to share a group QR code" }, { status: 400 });
+      }
       const fileValue = form.get("media");
       if (fileValue !== null && !(fileValue instanceof File)) {
         return NextResponse.json({ error: "Invalid media upload" }, { status: 400 });
@@ -201,14 +229,30 @@ export async function POST(request: Request) {
             mediaType: file.type,
             mediaPublicId: uploaded.publicId,
           },
-          select: { id: true, senderId: true, content: true, mediaUrl: true, mediaType: true, createdAt: true },
+          select: {
+            id: true,
+            senderId: true,
+            content: true,
+            mediaUrl: true,
+            mediaType: true,
+            createdAt: true,
+            reactions: { select: { userId: true, kind: true } },
+          },
         });
         await db.groupConversation.update({ where: { id: input.groupId }, data: { updatedAt: created.createdAt } });
         return NextResponse.json({ message: created }, { status: 201 });
       }
       const created = await db.groupMessage.create({
         data: { groupId: input.groupId, senderId: userId, content: input.content ?? "" },
-        select: { id: true, senderId: true, content: true, mediaUrl: true, mediaType: true, createdAt: true },
+        select: {
+          id: true,
+          senderId: true,
+          content: true,
+          mediaUrl: true,
+          mediaType: true,
+          createdAt: true,
+          reactions: { select: { userId: true, kind: true } },
+        },
       });
       await db.groupConversation.update({ where: { id: input.groupId }, data: { updatedAt: created.createdAt } });
       return NextResponse.json({ message: created }, { status: 201 });
@@ -315,6 +359,7 @@ export async function PATCH(request: Request) {
   if ("error" in authResult) return authResult.error;
   const userId = authResult.session.user.id;
   let newImagePublicId: string | undefined;
+  let newThemeImagePublicId: string | undefined;
 
   try {
     const contentType = request.headers.get("content-type") ?? "";
@@ -325,17 +370,26 @@ export async function PATCH(request: Request) {
       const theme = z.enum(["forest", "ocean", "sunset", "lavender", "midnight"])
         .parse(form.get("theme"));
       const photo = form.get("photo");
+      const themePhoto = form.get("themePhoto");
       if (photo !== null && !(photo instanceof File)) {
         return NextResponse.json({ error: "Invalid group picture" }, { status: 400 });
+      }
+      if (themePhoto !== null && !(themePhoto instanceof File)) {
+        return NextResponse.json({ error: "Invalid theme picture" }, { status: 400 });
       }
       if (photo instanceof File &&
         (!ALLOWED_IMAGE_TYPES.has(photo.type) || photo.size < 1 || photo.size > MAX_IMAGE_BYTES)) {
         return NextResponse.json({ error: "Choose a PNG, JPEG, or WebP picture up to 5 MB" }, { status: 400 });
       }
+      if (themePhoto instanceof File &&
+        (!ALLOWED_IMAGE_TYPES.has(themePhoto.type) || themePhoto.size < 1 || themePhoto.size > MAX_IMAGE_BYTES)) {
+        return NextResponse.json({ error: "Choose a PNG, JPEG, or WebP theme picture up to 5 MB" }, { status: 400 });
+      }
       const membership = await getMembership(groupId, userId);
       if (!membership?.isAdmin) return NextResponse.json({ error: "Only group admins can edit settings" }, { status: 403 });
 
       let imageUrl: string | undefined;
+      let themeImageUrl: string | undefined;
       if (photo instanceof File) {
         const uploaded = await uploadImage(
           asDataUrl(photo, Buffer.from(await photo.arrayBuffer())),
@@ -344,9 +398,17 @@ export async function PATCH(request: Request) {
         imageUrl = uploaded.url;
         newImagePublicId = uploaded.publicId;
       }
+      if (themePhoto instanceof File) {
+        const uploaded = await uploadImage(
+          asDataUrl(themePhoto, Buffer.from(await themePhoto.arrayBuffer())),
+          "resident-group-chats",
+        );
+        themeImageUrl = uploaded.url;
+        newThemeImagePublicId = uploaded.publicId;
+      }
       const oldImage = await db.groupConversation.findUnique({
         where: { id: groupId },
-        select: { imagePublicId: true },
+        select: { imagePublicId: true, themeImagePublicId: true },
       });
       const group = await db.groupConversation.update({
         where: { id: groupId },
@@ -354,12 +416,18 @@ export async function PATCH(request: Request) {
           name,
           theme,
           ...(imageUrl ? { imageUrl, imagePublicId: newImagePublicId } : {}),
+          ...(themeImageUrl ? { themeImageUrl, themeImagePublicId: newThemeImagePublicId } : {}),
         },
-        select: { id: true, name: true, imageUrl: true, theme: true },
+        select: { id: true, name: true, imageUrl: true, theme: true, themeImageUrl: true },
       });
       if (newImagePublicId && oldImage?.imagePublicId) {
         await deleteImage(oldImage.imagePublicId).catch((error: unknown) => {
           console.error("Failed to remove the previous group picture", error);
+        });
+      }
+      if (newThemeImagePublicId && oldImage?.themeImagePublicId) {
+        await deleteImage(oldImage.themeImagePublicId).catch((error: unknown) => {
+          console.error("Failed to remove the previous group theme picture", error);
         });
       }
       return NextResponse.json({ group });
@@ -368,6 +436,55 @@ export async function PATCH(request: Request) {
     const input = updateSchema.parse(await request.json());
     const membership = await getMembership(input.groupId, userId);
     if (!membership) return NextResponse.json({ error: "Group not found" }, { status: 404 });
+
+    if (input.action === "add_members") {
+      if (!membership.isAdmin) return NextResponse.json({ error: "Only group admins can add members" }, { status: 403 });
+      const memberIds = [...new Set(input.memberIds ?? [])].filter((memberId) => memberId !== userId);
+      if (!memberIds.length) return NextResponse.json({ error: "Choose at least one friend to add" }, { status: 400 });
+      const existing = await db.groupConversationMember.findMany({
+        where: { groupId: input.groupId, userId: { in: memberIds } },
+        select: { userId: true },
+      });
+      const existingIds = new Set(existing.map((member) => member.userId));
+      const newMemberIds = memberIds.filter((memberId) => !existingIds.has(memberId));
+      if (!newMemberIds.length) return NextResponse.json({ error: "Those residents are already group members" }, { status: 409 });
+      const residents = await db.user.findMany({
+        where: { id: { in: newMemberIds }, role: "RESIDENT", isActive: true },
+        select: { id: true },
+      });
+      const [lowerMatches, higherMatches] = await Promise.all([
+        db.friendship.findMany({
+          where: { userLowId: userId, userHighId: { in: newMemberIds } },
+          select: { userHighId: true },
+        }),
+        db.friendship.findMany({
+          where: { userHighId: userId, userLowId: { in: newMemberIds } },
+          select: { userLowId: true },
+        }),
+      ]);
+      const friendIds = new Set([
+        ...lowerMatches.map((friendship) => friendship.userHighId),
+        ...higherMatches.map((friendship) => friendship.userLowId),
+      ]);
+      if (residents.length !== newMemberIds.length || friendIds.size !== newMemberIds.length) {
+        return NextResponse.json({ error: "Only active resident friends can be added" }, { status: 403 });
+      }
+      await db.groupConversationMember.createMany({
+        data: newMemberIds.map((memberId) => ({ groupId: input.groupId, userId: memberId })),
+        skipDuplicates: true,
+      });
+      const members = await db.groupConversationMember.findMany({
+        where: { groupId: input.groupId },
+        orderBy: { joinedAt: "asc" },
+        select: {
+          userId: true,
+          isAdmin: true,
+          lastReadAt: true,
+          user: { select: { id: true, name: true, image: true, lastSeenAt: true } },
+        },
+      });
+      return NextResponse.json({ members });
+    }
 
     if (input.action === "read") {
       const readAt = new Date();
@@ -413,8 +530,18 @@ export async function PATCH(request: Request) {
         console.error("Failed to clean up an unused group image", cleanupError);
       }
     }
+    if (newThemeImagePublicId) {
+      try {
+        await deleteImage(newThemeImagePublicId);
+      } catch (cleanupError) {
+        console.error("Failed to clean up an unused group theme picture", cleanupError);
+      }
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.flatten() }, { status: 400 });
+    }
+    if (error instanceof Error && error.message === "Cloudinary is not configured") {
+      return NextResponse.json({ error: "Custom group pictures require Cloudinary configuration." }, { status: 503 });
     }
     console.error("Failed to update resident group chat", error);
     return NextResponse.json({ error: "Unable to update group chat" }, { status: 500 });

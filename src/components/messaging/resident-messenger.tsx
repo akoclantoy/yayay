@@ -102,6 +102,19 @@ type MessengerData = {
 };
 type Tab = "inbox" | "friends" | "requests" | "directory" | "groups" | "profile";
 type ForwardGroup = { id: string; name: string; imageUrl: string | null };
+type GroupInboxItem = {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  unread: boolean;
+  lastMessage: {
+    senderId: string;
+    content: string;
+    mediaUrl: string | null;
+    mediaType: string | null;
+    createdAt: string;
+  } | null;
+};
 
 function getMessagePreview(content: string, mediaUrl?: string | null, mediaType?: string | null) {
   if (getSharedResidentQrCode(content)) return "Shared a resident QR code";
@@ -185,6 +198,8 @@ export function ResidentMessenger({
   const [directoryHasMore, setDirectoryHasMore] = useState(false);
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [groupInbox, setGroupInbox] = useState<GroupInboxItem[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeFriendId, setActiveFriendId] = useState<string | null>(null);
   const [details, setDetails] = useState<ConversationDetails | null>(null);
@@ -265,6 +280,11 @@ export function ResidentMessenger({
     setData(result.friends);
     setConversations(result.conversations);
   }, [residentId]);
+
+  const refreshGroupInbox = useCallback(async () => {
+    const result = await requestJson<{ groups: GroupInboxItem[] }>("/api/resident/groups");
+    setGroupInbox(result.groups);
+  }, []);
 
   const prefetchConversation = useCallback((conversationId: string) => {
     void loadCachedMessengerData(
@@ -401,6 +421,12 @@ export function ResidentMessenger({
   }, [refresh]);
 
   useEffect(() => {
+    void refreshGroupInbox().catch((cause: unknown) => {
+      console.error("[resident-messenger] Could not load group inbox:", cause);
+    });
+  }, [refreshGroupInbox]);
+
+  useEffect(() => {
     if (!activeConversationId) return;
     let active = true;
     const load = async () => {
@@ -473,6 +499,7 @@ export function ResidentMessenger({
         } else {
           await refresh();
         }
+        await refreshGroupInbox();
       };
       void update().catch((cause: unknown) => {
         setError(getErrorMessage(cause));
@@ -481,7 +508,7 @@ export function ResidentMessenger({
       });
     };
     return subscribeToRealtimeChanges(updateMessages);
-  }, [activeConversationId, refresh, refreshOpenConversation]);
+  }, [activeConversationId, refresh, refreshGroupInbox, refreshOpenConversation]);
 
   useEffect(() => {
     if (shouldAutoScrollRef.current) {
@@ -538,6 +565,10 @@ export function ResidentMessenger({
     const query = search.trim().toLocaleLowerCase();
     return conversations.filter((item) => displayName(item.friend).toLocaleLowerCase().includes(query));
   }, [conversations, search]);
+  const filteredGroupInbox = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return groupInbox.filter((group) => group.name.toLocaleLowerCase().includes(query));
+  }, [groupInbox, search]);
 
   const filteredFriends = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -1176,7 +1207,7 @@ export function ResidentMessenger({
                 ["groups", "Groups", Users],
                 ["profile", "My QR", QrCode],
               ] as const).map(([key, label, Icon]) => (
-                <button key={key} type="button" onClick={() => { setTab(key); setActiveFriendId(null); setActiveConversationId(null); setDetails(null); setProfile(null); }} className={cn("flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[9px] font-semibold transition sm:text-[10px]", tab === key ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
+                <button key={key} type="button" onClick={() => { setTab(key); setActiveFriendId(null); setActiveConversationId(null); setDetails(null); setProfile(null); if (key === "groups") setActiveGroupId(null); }} className={cn("flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[9px] font-semibold transition sm:text-[10px]", tab === key ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
                   <Icon className="h-4 w-4" />
                   <span className="max-w-full truncate">{label}</span>
                   {key === "requests" && (data?.incomingRequests.length ?? 0) > 0 && <span className="absolute ml-7 -mt-7 h-2 w-2 rounded-full bg-secondary" />}
@@ -1191,7 +1222,7 @@ export function ResidentMessenger({
                 </div>
               ) : tab === "inbox" ? (
                 <div>
-                  {filteredConversations.length ? filteredConversations.map((item) => (
+                  {filteredConversations.map((item) => (
                     <button key={item.friend.id} type="button" onPointerEnter={() => item.id && prefetchConversation(item.id)} onFocus={() => item.id && prefetchConversation(item.id)} onClick={() => {
                       setActiveFriendId(item.friend.id);
                       setActiveConversationId(item.id);
@@ -1210,7 +1241,15 @@ export function ResidentMessenger({
                         <span className={cn("mt-1 block truncate text-xs", item.unread ? "font-bold text-foreground" : "text-muted-foreground")}>{item.lastMessage ? getMessagePreview(item.lastMessage.content, item.lastMessage.mediaUrl, item.lastMessage.mediaType) : "Start a conversation"}</span>
                       </span>
                     </button>
-                  )) : <EmptyList icon={<MessageCircle />} title="Your inbox is ready" text="Open a friend from your list to start chatting." action="Browse friends" onAction={() => setTab("friends")} />}
+                  ))}
+                  {filteredGroupInbox.length > 0 && <p className="px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Group chats</p>}
+                  {filteredGroupInbox.map((group) => (
+                    <button key={group.id} type="button" onClick={() => { setActiveGroupId(group.id); setTab("groups"); }} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-muted/60">
+                      <span className="relative shrink-0"><Avatar className="h-12 w-12 border-2 border-white/80 shadow-sm"><AvatarImage src={group.imageUrl ?? undefined} alt={group.name} /><AvatarFallback><Users className="h-4 w-4" /></AvatarFallback></Avatar>{group.unread && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-primary" aria-label="Unread group message" />}</span>
+                      <span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className={cn("truncate text-sm", group.unread ? "font-extrabold text-foreground" : "font-semibold")}>{group.name}</span><span className="shrink-0 text-[10px] text-muted-foreground">{group.lastMessage ? dateFormatter.format(new Date(group.lastMessage.createdAt)) : ""}</span></span><span className={cn("mt-1 block truncate text-xs", group.unread ? "font-bold text-foreground" : "text-muted-foreground")}>{group.lastMessage?.content.startsWith("ERGROUPQR:") ? "Shared a resident QR code" : group.lastMessage?.content || (group.lastMessage?.mediaType?.startsWith("video/") ? "Shared a video" : group.lastMessage?.mediaUrl ? "Shared a photo" : "Start your group conversation")}</span></span>
+                    </button>
+                  ))}
+                  {!filteredConversations.length && !filteredGroupInbox.length && <EmptyList icon={<MessageCircle />} title="Your inbox is ready" text="Open a friend or group chat to start chatting." action="Browse friends" onAction={() => setTab("friends")} />}
                 </div>
               ) : tab === "friends" ? (
                 <div className="space-y-1">
@@ -1623,7 +1662,14 @@ export function ResidentMessenger({
       {tab === "groups" && <GroupChatPanel
         residentId={residentId}
         friends={data?.friends ?? []}
-        onClose={() => setTab("inbox")}
+        initialGroupId={activeGroupId}
+        onClose={() => {
+          setActiveGroupId(null);
+          setTab("inbox");
+          void refreshGroupInbox().catch((cause: unknown) => {
+            console.error("[resident-messenger] Could not refresh group inbox:", cause);
+          });
+        }}
         onForward={(messageId) => void openForwardPicker("group", messageId)}
       />}
 
