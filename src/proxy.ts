@@ -31,6 +31,7 @@ function isPublic(path: string) {
   if (path.startsWith("/api/auth")) return true;
   if (path === "/api/health") return true;
   if (path === "/api/stats/public") return true;
+  if (path === "/api/stats/recycling-chart") return true;
   return false;
 }
 

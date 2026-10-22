@@ -1,25 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  ArrowDownRight,
-  ArrowUpRight,
   BadgeCheck,
-  Check,
   Leaf,
   Recycle,
-  Sparkles,
   Users,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatPoints } from "@/lib/utils";
-
-type DailyImpact = {
-  day: string;
-  records: number;
-  totalWeightKg: number;
-  weights: number[];
-};
+import { VerifiedRecyclingChart } from "@/components/landing/verified-recycling-chart";
 
 type MaterialSeries = {
   name: string;
@@ -35,33 +25,13 @@ type CommunityStats = {
   scoredResidentCount: number;
   monthlyChangePercent: number | null;
   verifiedRecords: number;
-  dailyImpact: DailyImpact[];
   materials: MaterialSeries[];
   materialBreakdown: MaterialSeries[];
 };
 
-const numberFormat = new Intl.NumberFormat("en-PH", {
-  maximumFractionDigits: 0,
-});
-
 const preciseNumberFormat = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 1,
 });
-
-function formatDate(day: string) {
-  return new Date(`${day}T00:00:00Z`).toLocaleDateString("en-PH", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-function monthChangeLabel(change: number | null) {
-  if (change === null) return "No previous-month activity to compare yet";
-  if (change === 0) return "No change from the same period last month";
-  const direction = change > 0 ? "more" : "less";
-  return `${preciseNumberFormat.format(Math.abs(change))}% ${direction} than the same period last month`;
-}
 
 export function LandingCommunityImpact() {
   const [stats, setStats] = useState<CommunityStats | null>(null);
@@ -92,13 +62,6 @@ export function LandingCommunityImpact() {
 
     return () => controller.abort();
   }, []);
-
-  const activity = useMemo(() => stats?.dailyImpact ?? [], [stats]);
-  const maxActivity = Math.max(
-    ...activity.map((day) => day.totalWeightKg),
-    1
-  );
-  const monthlyChange = stats?.monthlyChangePercent ?? 0;
 
   const detailCards = [
     {
@@ -131,6 +94,17 @@ export function LandingCommunityImpact() {
       detail:
         "Residents with an account in EcoRewards; this is not limited to recent recyclers.",
     },
+    {
+      icon: Users,
+      label: "Average resident score",
+      value:
+        stats?.averageResidentScore !== null && stats?.averageResidentScore !== undefined
+          ? new Intl.NumberFormat("en-PH", { maximumFractionDigits: 2 }).format(stats.averageResidentScore)
+          : "—",
+      detail: stats
+        ? `Environmental score average across ${formatPoints(stats.scoredResidentCount)} residents.`
+        : "Environmental score average across residents with recorded scores.",
+    },
   ];
 
   return (
@@ -148,138 +122,15 @@ export function LandingCommunityImpact() {
             activity is changing, and the environmental benefits those records
             represent.
           </p>
+          {error && (
+            <p role="status" className="mt-2 text-sm text-amber-700 dark:text-amber-300">
+              Some community impact details are unavailable right now.
+            </p>
+          )}
         </header>
 
         <div className="relative mb-12 px-0 pb-5 sm:px-7">
-          <article
-            aria-labelledby="community-impact-total"
-            className="relative isolate h-[355px] overflow-hidden rounded-[24px] bg-[#153f32] px-6 pb-7 pt-7 text-white shadow-[0_24px_70px_-35px_rgba(13,50,37,0.55)] sm:h-[380px] sm:px-8 sm:pt-8"
-          >
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute -right-[38px] -top-[116px] h-[250px] w-[250px] rounded-full border-[22px] border-[#d7e4dc]"
-            />
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute right-5 top-6 z-10 flex h-11 w-11 items-center justify-center rounded-[15px] bg-[#f0b943] text-[#382807] sm:right-8 sm:top-8"
-            >
-              <Sparkles className="h-5 w-5" strokeWidth={1.8} />
-            </div>
-
-            <div className="relative z-10">
-              <p className="text-sm font-medium text-[#c1d7ce]">
-                Total community recycling
-              </p>
-              <h3
-                className="mt-1 text-[34px] font-semibold leading-tight tracking-tight sm:text-[38px]"
-                id="community-impact-total"
-              >
-                {error
-                  ? "Data unavailable"
-                  : stats
-                    ? `${numberFormat.format(stats.totalRecycledKg)} kg`
-                    : "Loading impact…"}
-              </h3>
-              {error ? (
-                <p aria-live="polite" className="mt-1 text-sm text-rose-200">
-                  {error}
-                </p>
-              ) : (
-                <p
-                  className={`mt-1 flex max-w-[75%] items-center gap-1 text-sm font-medium ${
-                    monthlyChange < 0
-                      ? "text-[#ffd0ca]"
-                      : "text-[#c6eb83]"
-                  }`}
-                  title="Compares this month so far with the same number of days from last month."
-                >
-                  {stats?.monthlyChangePercent === null ? (
-                    <Check className="h-4 w-4 shrink-0" />
-                  ) : monthlyChange < 0 ? (
-                    <ArrowDownRight className="h-4 w-4 shrink-0" />
-                  ) : (
-                    <ArrowUpRight className="h-4 w-4 shrink-0" />
-                  )}
-                  <span>
-                    {stats
-                      ? monthChangeLabel(stats.monthlyChangePercent)
-                      : "Month-to-date comparison"}
-                  </span>
-                </p>
-              )}
-            </div>
-
-            {stats &&
-            stats.verifiedRecords > 0 &&
-            stats.materials.length > 0 ? (
-              <>
-                <div
-                  aria-label="Verified recycling weight by day over the last 90 days"
-                  className="absolute inset-x-6 bottom-[82px] flex h-[118px] items-end gap-0.5 border-b border-[#c1d7ce]/90 sm:inset-x-8 sm:gap-1"
-                  role="img"
-                >
-                  {activity.map((day, index) => (
-                    <div
-                      key={day.day}
-                      aria-label={`${formatDate(day.day)}: ${preciseNumberFormat.format(day.totalWeightKg)} kilograms in ${day.records} verified collections`}
-                      className="min-w-0 flex-1 rounded-t-[2px] bg-[#86b440] transition-colors hover:bg-[#a1ce56]"
-                      style={{
-                        height: `${Math.max(
-                          (day.totalWeightKg / maxActivity) * 100,
-                          day.totalWeightKg > 0 ? 8 : 0
-                        )}%`,
-                        opacity: 0.5 + (index / Math.max(activity.length - 1, 1)) * 0.5,
-                      }}
-                      title={`${formatDate(day.day)}: ${preciseNumberFormat.format(day.totalWeightKg)} kg recycled · ${day.records} verified collections`}
-                    />
-                  ))}
-                </div>
-                <p className="absolute bottom-[61px] left-6 text-[10px] text-[#c1d7ce]/80 sm:left-8">
-                  Each bar = 1 day · hover a bar for its total
-                </p>
-              </>
-            ) : (
-              <div className="absolute inset-x-6 bottom-[82px] flex h-[118px] items-center justify-center rounded-xl border border-dashed border-[#c1d7ce]/40 px-4 text-center text-sm text-[#d0e0d8] sm:inset-x-8">
-                {error
-                  ? "Recycling activity could not be loaded. Please try again later."
-                  : stats?.verifiedRecords
-                    ? "No verified recycling collections were recorded in the last 90 days."
-                    : "No verified recycling collections have been recorded yet."}
-              </div>
-            )}
-
-            <div className="absolute bottom-7 right-6 flex items-center gap-2 text-sm font-semibold sm:right-8">
-              <Check className="h-[17px] w-[17px] text-[#c6eb83]" />
-              <span>Verified collections</span>
-              {stats && (
-                <span className="text-[#c1d7ce]">
-                  {formatPoints(stats.verifiedRecords)}
-                </span>
-              )}
-            </div>
-          </article>
-
-          <div className="absolute bottom-0 left-[-3px] z-20 rounded-tr-[20px] bg-white px-4 pb-3 pt-3 text-[#153f32] shadow-[8px_-5px_22px_-18px_rgba(13,50,37,0.65)] dark:bg-[#173028] dark:text-[#edf5ed] sm:left-0">
-            <p className="text-xs font-medium text-[#60756b] dark:text-[#9ab2a4]">
-              Average resident score
-            </p>
-            <p className="mt-1 text-lg font-bold leading-none">
-              {stats?.averageResidentScore !== null &&
-              stats?.averageResidentScore !== undefined
-                ? new Intl.NumberFormat("en-PH", {
-                    maximumFractionDigits: 2,
-                  }).format(stats.averageResidentScore)
-                : "—"}
-              <span className="ml-1 text-xs font-medium text-[#60756b] dark:text-[#9ab2a4]">
-                / 1000
-              </span>
-            </p>
-            {stats && (
-              <p className="mt-1 text-[10px] text-[#60756b] dark:text-[#9ab2a4]">
-                Across {formatPoints(stats.scoredResidentCount)} residents
-              </p>
-            )}
-          </div>
+          <VerifiedRecyclingChart />
         </div>
 
         <section aria-labelledby="impact-details-title" className="space-y-6">
