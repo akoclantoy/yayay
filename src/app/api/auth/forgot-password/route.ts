@@ -1,62 +1,127 @@
-import { randomBytes } from "crypto";
-import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
+import { after, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { forgotPasswordSchema } from "@/lib/validators/auth";
-import { sendEmail, resetPasswordEmailHtml } from "@/lib/email";
 import { APP_NAME } from "@/lib/constants";
-import { getAppUrl } from "@/lib/env";
+import {
+  createRecoveryCode,
+  hashRecoveryValue,
+  normalizePhilippinePhone,
+  sendRecoverySms,
+} from "@/lib/sms-recovery";
+
+const GENERIC_MESSAGE =
+  "If an account matches and has a registered mobile number, a verification code has been sent.";
 
 export async function POST(request: Request) {
   try {
+    if (!process.env.SMS_SERVICE_URL || !process.env.SMS_SERVICE_TOKEN) {
+      return NextResponse.json(
+        { error: "SMS account recovery is temporarily unavailable." },
+        { status: 503 },
+      );
+    }
+
     const body = await request.json();
     const parsed = forgotPasswordSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Enter a valid email or account name." }, { status: 400 });
     }
 
-    const email = parsed.data.email.toLowerCase();
-    const user = await db.user.findFirst({
-      where: { email, deletedAt: null, isActive: true },
-    });
+    const identifier = parsed.data.identifier.trim().toLowerCase();
+    const identifierHash = hashRecoveryValue(`identifier:${identifier}`);
+    const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    const clientAddress = request.headers.get("x-real-ip")?.trim() || forwardedFor || "unknown";
+    const clientHash = hashRecoveryValue(`client:${clientAddress}`);
+    const now = new Date();
+    const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60_000);
+    const oneHourAgo = new Date(now.getTime() - 60 * 60_000);
 
-    // Always return success to prevent email enumeration
-    if (!user) {
-      return NextResponse.json({
-        message: "If an account exists, a reset link has been sent.",
+    const matches = await db.user.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        OR: [
+          { email: identifier },
+          { name: { equals: parsed.data.identifier.trim(), mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, phone: true },
+      take: 2,
+    });
+    const user = matches.length === 1 ? matches[0] : null;
+    const phone = normalizePhilippinePhone(user?.phone ?? null);
+    const code = createRecoveryCode();
+    const challengeResult = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`sms-recovery:client:${clientHash}`}))`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`sms-recovery:identifier:${identifierHash}`}))`;
+
+      const [recentIdentifierRequests, recentClientRequests, latestRequest] = await Promise.all([
+        tx.smsRecoveryChallenge.count({
+          where: { identifierHash, createdAt: { gte: fifteenMinutesAgo } },
+        }),
+        tx.smsRecoveryChallenge.count({
+          where: { clientHash, createdAt: { gte: oneHourAgo } },
+        }),
+        tx.smsRecoveryChallenge.findFirst({
+          where: { identifierHash },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, createdAt: true },
+        }),
+      ]);
+      if (
+        recentIdentifierRequests >= 3 ||
+        recentClientRequests >= 15 ||
+        (latestRequest && now.getTime() - latestRequest.createdAt.getTime() < 60_000)
+      ) {
+        return { challengeId: latestRequest?.id ?? randomUUID(), challenge: null };
+      }
+
+      await tx.smsRecoveryChallenge.updateMany({
+        where: { identifierHash, consumedAt: null },
+        data: { consumedAt: now, resetTokenHash: null },
       });
-    }
-
-    const token = randomBytes(32).toString("hex");
-    const expires = new Date(Date.now() + 60 * 60 * 1000);
-
-    await db.passwordResetToken.create({
-      data: { token, userId: user.id, expires },
+      await tx.smsRecoveryChallenge.deleteMany({
+        where: { createdAt: { lt: new Date(now.getTime() - 30 * 24 * 60 * 60_000) } },
+      });
+      const challenge = await tx.smsRecoveryChallenge.create({
+        data: {
+          userId: phone ? user?.id : null,
+          identifierHash,
+          clientHash,
+          codeHash: hashRecoveryValue(`code:${code}`),
+          expiresAt: new Date(now.getTime() + 5 * 60_000),
+        },
+        select: { id: true },
+      });
+      return { challengeId: challenge.id, challenge };
     });
 
-    const baseUrl = getAppUrl();
-    const resetLink = `${baseUrl}/reset-password?token=${token}`;
-
-    const emailResult = await sendEmail({
-      to: email,
-      subject: `Reset your ${APP_NAME} password`,
-      html: resetPasswordEmailHtml(user.name ?? "there", resetLink),
+    after(async () => {
+      if (!user || !phone || !challengeResult.challenge) return;
+      try {
+        await sendRecoverySms(
+          phone,
+          `${APP_NAME} password recovery code: ${code}. It expires in 5 minutes. Do not share this code.`,
+        );
+      } catch (error) {
+        await db.smsRecoveryChallenge.update({
+          where: { id: challengeResult.challenge.id },
+          data: { consumedAt: new Date() },
+        });
+        console.error("[sms-recovery:send]", error);
+      }
     });
-
-    if (emailResult.skipped) {
-      console.info("[forgot-password] reset link (email not configured):", resetLink);
-    }
 
     return NextResponse.json({
-      message: "If an account exists, a reset link has been sent.",
+      message: GENERIC_MESSAGE,
+      challengeId: challengeResult.challengeId,
     });
   } catch (error) {
     console.error("[forgot-password]", error);
     return NextResponse.json(
-      { error: "Failed to process request" },
+      { error: "Unable to process the recovery request. Please try again later." },
       { status: 500 }
     );
   }

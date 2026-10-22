@@ -269,8 +269,14 @@ Optional:
 |---|---|
 | `GEMINI_API_KEY` | AI assistant & waste classifier |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google / Gmail sign-in |
-| `SMTP_*` | Email verification & password reset |
+| `SMTP_*` | Email verification |
 | `CLOUDINARY_*` | Image uploads |
+| `SMS_SERVICE_URL` / `SMS_SERVICE_TOKEN` | Private Ruby SMS service (provided by the Render Blueprint) |
+| `SEMAPHORE_API_KEY` | Semaphore SMS delivery; set on the `ecorewards-sms` service |
+
+**SMS account recovery:** The Render Blueprint creates the private Ruby service `ecorewards-sms`. Add your Semaphore API key to that service's `SEMAPHORE_API_KEY`; the Blueprint shares a generated `SMS_SERVICE_TOKEN` with the Next.js service. Keep both Render services in the same region so the private service URL works. For a manual deployment, deploy `sms-service` as a Ruby web service (`bundle install`, then `bundle exec ruby app.rb`), set `SEMAPHORE_API_KEY` and a strong `SMS_SERVICE_TOKEN` on it, and set the same token plus the private service URL as `SMS_SERVICE_TOKEN` and `SMS_SERVICE_URL` on the Next.js service. Locally, Ruby service dependencies must be installed and the service started separately; configure those same two variables in `.env.local`.
+
+Recovery codes are sent only to a unique active account match with a valid registered phone number. In this project, “account name” is the saved user name (there is no separate username field). Accounts without a phone number, or accounts whose names are not unique, must use their email as the lookup identifier and have a phone number added to their profile before SMS recovery can work. Codes expire after 5 minutes, allow up to 5 attempts, and requests are throttled.
 
 ### 5. Deploy
 

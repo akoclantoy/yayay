@@ -17,6 +17,10 @@ services:
         value: "20"
       - key: NODE_ENV
         value: production
+      - key: SMS_SERVICE_URL
+        value: http://ecorewards-sms:10000
+      - key: SMS_SERVICE_TOKEN
+        generateValue: true
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
@@ -33,3 +37,25 @@ services:
       # GEMINI_API_KEY — AI assistant & waste classification
       # GEMINI_CHAT_MODEL=gemini-2.5-flash-lite (optional)
       # GEMINI_VISION_MODEL=gemini-2.5-flash (optional)
+
+  - type: web
+    name: ecorewards-sms
+    rootDir: sms-service
+    runtime: ruby
+    plan: free
+    buildCommand: bundle install
+    startCommand: bundle exec ruby app.rb
+    healthCheckPath: /health
+    ipAllowList: []
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: SMS_SERVICE_TOKEN
+        fromService:
+          type: web
+          name: ecorewards
+          envVarKey: SMS_SERVICE_TOKEN
+      - key: SEMAPHORE_API_KEY
+        sync: false
+      - key: SMS_SENDER_NAME
+        value: EcoRewards

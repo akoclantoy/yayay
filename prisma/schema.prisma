@@ -118,6 +118,7 @@ model User {
   userAchievements        UserAchievement[]
   aiConversations         AIConversation[]
   passwordResetTokens     PasswordResetToken[]
+  smsRecoveryChallenges   SmsRecoveryChallenge[]
   emailVerificationTokens EmailVerificationToken[]
   createdAnnouncements    Announcement[]           @relation("AnnouncementAuthor")
   createdNews             News[]                   @relation("NewsAuthor")
@@ -195,6 +196,27 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([token])
+}
+
+model SmsRecoveryChallenge {
+  id              String    @id @default(cuid())
+  userId          String?
+  identifierHash  String
+  clientHash      String
+  codeHash        String
+  expiresAt       DateTime
+  attempts        Int       @default(0)
+  verifiedAt      DateTime?
+  resetTokenHash  String?
+  resetExpiresAt  DateTime?
+  consumedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  user            User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([identifierHash, createdAt])
+  @@index([clientHash, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 model EmailVerificationToken {

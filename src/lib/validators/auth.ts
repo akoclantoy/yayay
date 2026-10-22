@@ -39,7 +39,28 @@ export const createStaffSchema = z
   });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  identifier: z.string().trim().min(3, "Enter your registered email or account name").max(254),
+});
+
+export const verifyRecoveryOtpSchema = z.object({
+  challengeId: z.string().min(1).max(64),
+  code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code"),
+});
+
+export const resetRecoveredPasswordSchema = z
+  .object({
+    challengeId: z.string().min(1).max(64),
+    resetToken: z.string().regex(/^[a-f0-9]{64}$/i),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export const recoveryIdentifierSchema = z.object({
+  identifier: z.string().trim().min(3).max(254),
 });
 
 export const resetPasswordSchema = z
