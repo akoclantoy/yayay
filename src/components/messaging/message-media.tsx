@@ -2,7 +2,14 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { X } from "lucide-react";
+import { Download, X } from "lucide-react";
+
+function getDownloadUrl(src: string) {
+  return src.replace(
+    /^(https:\/\/res\.cloudinary\.com\/[^/]+\/(?:image|video)\/)upload\//,
+    "$1upload/fl_attachment/",
+  );
+}
 
 export function MessageMedia({
   src,
@@ -15,39 +22,53 @@ export function MessageMedia({
 }) {
   const [expanded, setExpanded] = useState(false);
   const isVideo = type?.startsWith("video/");
+  const downloadUrl = getDownloadUrl(src);
 
   return (
     <>
-      {isVideo ? (
-        <video
-          src={src}
-          controls
-          preload="metadata"
+      <div className="mb-2 w-fit max-w-full">
+        {isVideo ? (
+          <video
+            src={src}
+            controls
+            preload="metadata"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            className="max-h-[360px] max-w-full rounded-2xl border-0 bg-black"
+            aria-label={alt}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setExpanded(true);
+            }}
+            className="block max-w-full overflow-hidden rounded-2xl border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label={`View ${alt.toLowerCase()} full size`}
+          >
+            <Image
+              src={src}
+              alt={alt}
+              width={640}
+              height={480}
+              unoptimized
+              className="max-h-[360px] w-auto max-w-full object-contain"
+            />
+          </button>
+        )}
+        <a
+          href={downloadUrl}
+          download
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
-          className="mb-2 max-h-[360px] max-w-full rounded-2xl border-0 bg-black"
-          aria-label={alt}
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            setExpanded(true);
-          }}
-          className="mb-2 block max-w-full overflow-hidden rounded-2xl border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          aria-label={`View ${alt.toLowerCase()} full size`}
+          className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg border border-current/20 bg-black/5 px-2.5 py-1.5 text-xs font-medium text-current transition hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label={`Download ${isVideo ? "video" : "image"}`}
         >
-          <Image
-            src={src}
-            alt={alt}
-            width={640}
-            height={480}
-            unoptimized
-            className="max-h-[360px] w-auto max-w-full object-contain"
-          />
-        </button>
-      )}
+          <Download className="h-3.5 w-3.5" />
+          Download
+        </a>
+      </div>
       {expanded && (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-4"
