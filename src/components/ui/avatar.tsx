@@ -3,6 +3,7 @@
 import * as React from "react";
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
 import { cn } from "@/lib/utils";
+import { getCloudinaryImageProxySrc } from "@/lib/cloudinary-image";
 
 const Avatar = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Root>,
@@ -23,15 +24,10 @@ const AvatarImage = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Image>,
   React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>
 >(({ className, src, ...props }, ref) => {
-  const avatarSrc =
-    typeof src === "string" && src.startsWith("https://res.cloudinary.com/")
-      ? `/api/media/cloudinary-avatar?url=${encodeURIComponent(src)}`
-      : src;
-
   return (
     <AvatarPrimitive.Image
       ref={ref}
-      src={avatarSrc}
+      src={typeof src === "string" ? getCloudinaryImageProxySrc(src) : src}
       className={cn("aspect-square h-full w-full", className)}
       {...props}
     />

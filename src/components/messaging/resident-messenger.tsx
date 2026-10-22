@@ -130,7 +130,23 @@ const REACTIONS: { kind: ReactionKind; emoji: string; label: string }[] = [
 ];
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { cache: "no-store", ...init });
+  const method = init?.method?.toUpperCase() ?? "GET";
+  let response: Response;
+  try {
+    response = await fetch(url, { cache: "no-store", ...init });
+  } catch (error) {
+    if (method !== "GET" || !(error instanceof TypeError)) throw error;
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+    response = await fetch(url, { cache: "no-store", ...init });
+  }
+
+  if (
+    method === "GET" &&
+    [502, 503, 504].includes(response.status)
+  ) {
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+    response = await fetch(url, { cache: "no-store", ...init });
+  }
   const result = (await response.json()) as T & { error?: string };
   if (!response.ok) throw new Error(result.error ?? "The request could not be completed.");
   return result;
@@ -206,6 +222,7 @@ export function ResidentMessenger({
   const celebrationTimerRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const suppressNextMessageClickRef = useRef(false);
+  const conversationRefreshInFlightRef = useRef(new Set<string>());
 
   useEffect(() => () => {
     if (longPressTimerRef.current !== null) {
@@ -267,7 +284,7 @@ export function ResidentMessenger({
     const cached = getCachedMessengerData<ConversationDetails>(
       `messenger-conversation:${residentId}:${conversationId}`,
     );
-    if (cached) setDetails(cached);
+    if (cached && activeConversationId === conversationId) setDetails(cached);
     const conversation = await loadCachedMessengerData(
       `messenger-conversation:${residentId}:${conversationId}`,
       async () => {
@@ -278,34 +295,40 @@ export function ResidentMessenger({
       },
       force,
     );
-    setDetails(conversation);
+    if (activeConversationId === conversationId) setDetails(conversation);
     return conversation;
-  }, [residentId]);
+  }, [activeConversationId, residentId]);
 
   const refreshOpenConversation = useCallback(async (conversationId: string) => {
-    const conversation = await loadDetails(conversationId, true);
-    setConversations((current) => current.map((item) =>
-      item.id === conversationId ? { ...item, unread: false } : item,
-    ));
-    const latestMessage = conversation.messages.at(-1);
-    if (
-      latestMessage &&
-      latestMessage.senderId !== residentId &&
-      (!conversation.readAt || new Date(latestMessage.createdAt) > new Date(conversation.readAt))
-    ) {
-      void requestJson<{ readAt: string }>("/api/resident/direct-messages", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "read", conversationId }),
-      }).then((result) => {
-        setDetails((current) =>
-          current?.id === conversationId
-            ? { ...current, readAt: result.readAt }
-            : current,
-        );
-      }).catch((cause: unknown) => {
-        console.error("[resident-messenger] Failed to mark conversation as read:", cause);
-      });
+    if (conversationRefreshInFlightRef.current.has(conversationId)) return;
+    conversationRefreshInFlightRef.current.add(conversationId);
+    try {
+      const conversation = await loadDetails(conversationId, true);
+      setConversations((current) => current.map((item) =>
+        item.id === conversationId ? { ...item, unread: false } : item,
+      ));
+      const latestMessage = conversation.messages.at(-1);
+      if (
+        latestMessage &&
+        latestMessage.senderId !== residentId &&
+        (!conversation.readAt || new Date(latestMessage.createdAt) > new Date(conversation.readAt))
+      ) {
+        void requestJson<{ readAt: string }>("/api/resident/direct-messages", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "read", conversationId }),
+        }).then((result) => {
+          setDetails((current) =>
+            current?.id === conversationId
+              ? { ...current, readAt: result.readAt }
+              : current,
+          );
+        }).catch((cause: unknown) => {
+          console.error("[resident-messenger] Failed to mark conversation as read:", cause);
+        });
+      }
+    } finally {
+      conversationRefreshInFlightRef.current.delete(conversationId);
     }
   }, [loadDetails, residentId]);
 
@@ -401,7 +424,7 @@ export function ResidentMessenger({
           setError(getErrorMessage(cause));
         });
       }
-    }, 5000);
+    }, 15_000);
     return () => window.clearInterval(interval);
   }, [activeConversationId, refreshOpenConversation]);
 

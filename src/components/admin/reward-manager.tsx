@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { formatCurrency, pointsToCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { getCloudinaryImageProxySrc } from "@/lib/cloudinary-image";
 import { Input } from "@/components/ui/input";
 
 type RewardType = "VOUCHER" | "CASH" | "GIFT" | "DISCOUNT" | "BARANGAY_INCENTIVE";
@@ -183,7 +184,7 @@ export function RewardManager({ initial }: { initial: Reward[] }) {
             <CardContent className="space-y-3 pt-6">
               <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted/40">
                 {reward.imageUrl ? (
-                  <img src={reward.imageUrl} alt={`${reward.name} reward`} className="h-full w-full object-cover" />
+                  <img src={getCloudinaryImageProxySrc(reward.imageUrl)} alt={`${reward.name} reward`} className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                     No image available

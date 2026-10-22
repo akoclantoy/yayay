@@ -135,24 +135,31 @@ export function GroupChatPanel({
   useEffect(() => {
     if (!selectedGroupId) return;
     let active = true;
+    let refreshInFlight = false;
     const refresh = async () => {
-      const group = await loadDetails(selectedGroupId);
-      if (!active) return;
-      const latest = group.messages.at(-1);
-      const myMember = group.members.find((member) => member.userId === residentId);
-      if (latest && latest.senderId !== residentId &&
-        (!myMember?.lastReadAt || new Date(latest.createdAt) > new Date(myMember.lastReadAt))) {
-        void requestJson("/api/resident/groups", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "read", groupId: selectedGroupId }),
-        }).catch((cause: unknown) => {
-          console.error("[group-chat] Failed to mark group as read:", cause);
-        });
+      if (refreshInFlight) return;
+      refreshInFlight = true;
+      try {
+        const group = await loadDetails(selectedGroupId);
+        if (!active) return;
+        const latest = group.messages.at(-1);
+        const myMember = group.members.find((member) => member.userId === residentId);
+        if (latest && latest.senderId !== residentId &&
+          (!myMember?.lastReadAt || new Date(latest.createdAt) > new Date(myMember.lastReadAt))) {
+          void requestJson("/api/resident/groups", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "read", groupId: selectedGroupId }),
+          }).catch((cause: unknown) => {
+            console.error("[group-chat] Failed to mark group as read:", cause);
+          });
+        }
+        setGroups((current) => current.map((item) =>
+          item.id === selectedGroupId ? { ...item, unread: false } : item,
+        ));
+      } finally {
+        refreshInFlight = false;
       }
-      setGroups((current) => current.map((item) =>
-        item.id === selectedGroupId ? { ...item, unread: false } : item,
-      ));
     };
     void refresh().catch((cause: unknown) => {
       if (active) setError(cause instanceof Error ? cause.message : "Unable to refresh this group.");
@@ -161,7 +168,7 @@ export function GroupChatPanel({
       if (document.visibilityState === "visible") {
         void refresh().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Unable to refresh this group."));
       }
-    }, 5000);
+    }, 15_000);
     return () => {
       active = false;
       window.clearInterval(timer);

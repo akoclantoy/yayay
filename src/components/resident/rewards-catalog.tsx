@@ -7,6 +7,7 @@ import { formatDate, formatPoints, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getCloudinaryImageProxySrc } from "@/lib/cloudinary-image";
 import type { RewardModel } from "@/generated/prisma/models/Reward";
 import type { RedemptionRequestModel } from "@/generated/prisma/models/RedemptionRequest";
 
@@ -94,7 +95,7 @@ export function RewardsCatalog({
               <div className="aspect-[4/3] overflow-hidden rounded-t-xl bg-muted/40">
                 {reward.imageUrl ? (
                   <img
-                    src={reward.imageUrl}
+                    src={getCloudinaryImageProxySrc(reward.imageUrl)}
                     alt={`${reward.name} reward`}
                     className="h-full w-full object-cover"
                   />

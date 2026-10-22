@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Search, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { getCloudinaryImageProxySrc } from "@/lib/cloudinary-image";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { formatDateTime, formatPoints } from "@/lib/utils";
@@ -119,7 +120,7 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
                 {r.reward.name === "GCash Redemption" ? (
                   <img src="/gcash.svg" alt="GCash" className="h-9 w-9 rounded-md object-contain" />
                 ) : r.reward.imageUrl ? (
-                  <img src={r.reward.imageUrl} alt="" className="h-9 w-9 rounded-md object-cover" />
+                  <img src={getCloudinaryImageProxySrc(r.reward.imageUrl)} alt="" className="h-9 w-9 rounded-md object-cover" />
                 ) : null}
                 <CardTitle className="text-base">
                   {r.reward.name === "10% Partner Discount" ? "Reward Redemption" : r.reward.name}
