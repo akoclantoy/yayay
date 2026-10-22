@@ -17,10 +17,14 @@ const PUBLIC_PATHS = [
 const ROLE_PREFIX: Record<UserRole, string> = {
   ADMIN: "/admin",
   COLLECTION_STAFF: "/staff",
-  BARANGAY_STAFF: "/barangay",
+  BARANGAY_STAFF: "/staff",
   RESIDENT: "/resident",
   GUEST: "/",
 };
+
+function getPortalPath(role: UserRole) {
+  return ROLE_PREFIX[role] ?? "/";
+}
 
 function isPublic(path: string) {
   if (PUBLIC_PATHS.includes(path)) return true;
@@ -44,6 +48,13 @@ export default auth((req) => {
   }
 
   if (isPublic(path)) {
+    if (isLoggedIn && ["/", "/login", "/register"].includes(path)) {
+      const role = session.user.role ?? "RESIDENT";
+      const portalPath = getPortalPath(role);
+      if (portalPath !== "/") {
+        return NextResponse.redirect(new URL(portalPath, req.url));
+      }
+    }
     return NextResponse.next();
   }
 
