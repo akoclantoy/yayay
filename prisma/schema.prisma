@@ -553,6 +553,7 @@ model GroupConversationMember {
   id             String    @id @default(cuid())
   groupId        String
   userId         String
+  nickname       String?
   isAdmin        Boolean   @default(false)
   lastReadAt     DateTime?
   joinedAt       DateTime  @default(now())

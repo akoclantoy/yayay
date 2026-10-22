@@ -15,12 +15,16 @@ const messageSchema = z.object({
   content: z.string().trim().max(2000).optional(),
 });
 const updateSchema = z.object({
-  action: z.enum(["read", "react", "settings", "add_members"]),
+  action: z.enum(["read", "react", "settings", "add_members", "set_nickname"]),
   groupId: z.string().min(1),
   memberIds: z.array(z.string().min(1)).min(1).max(50).optional(),
+  nickname: z.string().trim().max(32).optional(),
   messageId: z.string().min(1).optional(),
   reaction: z.enum(["LIKE", "HEART", "FUNNY", "ANGRY"]).optional(),
-}).refine((input) => input.action !== "react" || Boolean(input.messageId && input.reaction));
+}).refine((input) =>
+  (input.action !== "react" || Boolean(input.messageId && input.reaction)) &&
+  (input.action !== "set_nickname" || input.nickname !== undefined),
+);
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -62,6 +66,7 @@ export async function GET(request: Request) {
             orderBy: { joinedAt: "asc" },
             select: {
               userId: true,
+              nickname: true,
               isAdmin: true,
               lastReadAt: true,
               user: { select: { id: true, name: true, image: true, lastSeenAt: true } },
@@ -437,6 +442,15 @@ export async function PATCH(request: Request) {
     const membership = await getMembership(input.groupId, userId);
     if (!membership) return NextResponse.json({ error: "Group not found" }, { status: 404 });
 
+    if (input.action === "set_nickname") {
+      const member = await db.groupConversationMember.update({
+        where: { groupId_userId: { groupId: input.groupId, userId } },
+        data: { nickname: input.nickname?.trim() || null },
+        select: { userId: true, nickname: true },
+      });
+      return NextResponse.json({ member });
+    }
+
     if (input.action === "add_members") {
       if (!membership.isAdmin) return NextResponse.json({ error: "Only group admins can add members" }, { status: 403 });
       const memberIds = [...new Set(input.memberIds ?? [])].filter((memberId) => memberId !== userId);
@@ -478,6 +492,7 @@ export async function PATCH(request: Request) {
         orderBy: { joinedAt: "asc" },
         select: {
           userId: true,
+          nickname: true,
           isAdmin: true,
           lastReadAt: true,
           user: { select: { id: true, name: true, image: true, lastSeenAt: true } },

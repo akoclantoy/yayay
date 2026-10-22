@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import QRCode from "react-qr-code";
-import { ArrowLeft, Check, Forward, ImagePlus, MessageCircle, Palette, Paperclip, Plus, QrCode, Send, Settings2, Users, Wallet, X } from "lucide-react";
+import { ArrowLeft, Check, Forward, ImagePlus, MessageCircle, Palette, Paperclip, Plus, QrCode, Send, Settings2, SmilePlus, Users, Wallet, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { MessageMedia } from "@/components/messaging/message-media";
@@ -21,6 +21,7 @@ type GroupSummary = {
 };
 type GroupMember = {
   userId: string;
+  nickname: string | null;
   isAdmin: boolean;
   lastReadAt: string | null;
   user: Resident & { lastSeenAt: string | null };
@@ -71,6 +72,10 @@ function displayName(user: Resident) {
   return user.name?.trim() || "EcoRewards resident";
 }
 
+function displayMemberName(member: GroupMember) {
+  return member.nickname?.trim() || displayName(member.user);
+}
+
 function renderMessageContent(content: string) {
   const parts = content.split(/(@\[[^\]]+\])/g);
   return parts.map((part, index) =>
@@ -107,7 +112,7 @@ export function GroupChatPanel({
   onForward: (messageId: string) => void;
 }) {
   const [groups, setGroups] = useState<GroupSummary[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(initialGroupId);
   const [details, setDetails] = useState<GroupDetails | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -122,6 +127,8 @@ export function GroupChatPanel({
   const [transferBalance, setTransferBalance] = useState<number | null>(null);
   const [transferConfirmation, setTransferConfirmation] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [nickname, setNickname] = useState("");
+  const [activeReactionMessageId, setActiveReactionMessageId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
@@ -130,8 +137,11 @@ export function GroupChatPanel({
   const [error, setError] = useState<string | null>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const reactionHoldTimerRef = useRef<number | null>(null);
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
+  const currentMember = details?.members.find((member) => member.userId === residentId) ?? null;
+  const isGroupAdmin = Boolean(currentMember?.isAdmin);
   const currentTheme = THEMES[(details?.theme ?? selectedGroup?.theme ?? "forest") as keyof typeof THEMES] ?? THEMES.forest;
 
   const loadGroups = useCallback(async () => {
@@ -158,10 +168,6 @@ export function GroupChatPanel({
       active = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (initialGroupId) setSelectedGroupId(initialGroupId);
-  }, [initialGroupId]);
 
   useEffect(() => {
     if (!selectedGroupId) return;
@@ -213,7 +219,7 @@ export function GroupChatPanel({
     ? []
     : (details?.members ?? [])
         .filter((member) => member.userId !== residentId &&
-          displayName(member.user).toLowerCase().includes(mentionQuery.toLowerCase()))
+          displayMemberName(member).toLowerCase().includes(mentionQuery.toLowerCase()))
         .slice(0, 5);
 
   function addMention(member: GroupMember) {
@@ -222,7 +228,7 @@ export function GroupChatPanel({
     const cursor = input.selectionStart;
     const mentionStart = message.slice(0, cursor).lastIndexOf("@");
     if (mentionStart < 0) return;
-    const mention = `@[${displayName(member.user)}] `;
+    const mention = `@[${displayMemberName(member)}] `;
     const updated = `${message.slice(0, mentionStart)}${mention}${message.slice(cursor)}`;
     setMessage(updated);
     setMentionQuery(null);
@@ -231,6 +237,17 @@ export function GroupChatPanel({
       const nextPosition = mentionStart + mention.length;
       input.setSelectionRange(nextPosition, nextPosition);
     });
+  }
+
+  function openGroupSettings() {
+    if (!selectedGroup) return;
+    setName(details?.name ?? selectedGroup.name);
+    setTheme((details?.theme ?? selectedGroup.theme) as keyof typeof THEMES);
+    setNickname(currentMember?.nickname ?? "");
+    setPhoto(null);
+    setThemePhoto(null);
+    setSelectedMemberIds([]);
+    setSettingsOpen(true);
   }
 
   async function shareQr() {
@@ -412,6 +429,54 @@ export function GroupChatPanel({
     }
   }
 
+  async function saveNickname() {
+    if (!selectedGroupId) return;
+    setWorking(true);
+    setError(null);
+    try {
+      const result = await requestJson<{ member: { userId: string; nickname: string | null } }>("/api/resident/groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_nickname", groupId: selectedGroupId, nickname }),
+      });
+      setDetails((current) => current
+        ? {
+            ...current,
+            members: current.members.map((member) =>
+              member.userId === result.member.userId
+                ? { ...member, nickname: result.member.nickname }
+                : member,
+            ),
+          }
+        : current);
+      setNotice(result.member.nickname ? "Your group nickname was updated." : "Your group nickname was removed.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to update your group nickname.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function startReactionHold(messageId: string) {
+    if (reactionHoldTimerRef.current !== null) window.clearTimeout(reactionHoldTimerRef.current);
+    reactionHoldTimerRef.current = window.setTimeout(() => {
+      setActiveReactionMessageId(messageId);
+      reactionHoldTimerRef.current = null;
+    }, 450);
+  }
+
+  function cancelReactionHold() {
+    if (reactionHoldTimerRef.current !== null) {
+      window.clearTimeout(reactionHoldTimerRef.current);
+      reactionHoldTimerRef.current = null;
+    }
+  }
+
+  function openReactionPicker(messageId: string) {
+    cancelReactionHold();
+    setActiveReactionMessageId((current) => current === messageId ? null : messageId);
+  }
+
   async function reactToMessage(messageId: string, kind: string) {
     if (!selectedGroupId) return;
     setError(null);
@@ -452,25 +517,24 @@ export function GroupChatPanel({
           }
         : current);
       setError(cause instanceof Error ? cause.message : "Unable to react to this message.");
+    } finally {
+      setActiveReactionMessageId(null);
     }
   }
+
+  useEffect(() => () => {
+    if (reactionHoldTimerRef.current !== null) window.clearTimeout(reactionHoldTimerRef.current);
+  }, []);
 
   return (
     <main className="fixed inset-0 z-[60] flex h-[100dvh] flex-col bg-[var(--background)] text-[var(--foreground)]">
       <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border/70 bg-white/95 px-4 shadow-sm sm:px-7">
         <Button variant="ghost" size="icon" aria-label="Back to messages" onClick={onClose}><ArrowLeft className="h-5 w-5" /></Button>
-        {selectedGroup ? (
+        {selectedGroupId ? (
           <>
-            <GroupAvatar imageUrl={details?.imageUrl ?? selectedGroup.imageUrl} name={details?.name ?? selectedGroup.name} size="h-10 w-10" />
-            <div className="min-w-0 flex-1"><h1 className="truncate text-sm font-bold">{details?.name ?? selectedGroup.name}</h1><p className="text-xs text-muted-foreground">{details?.members.length ?? 0} group members</p></div>
-            <Button variant="ghost" size="icon" aria-label="Group settings" onClick={() => {
-              setName(details?.name ?? selectedGroup.name);
-              setTheme((details?.theme ?? selectedGroup.theme) as keyof typeof THEMES);
-              setPhoto(null);
-                setThemePhoto(null);
-                setSelectedMemberIds([]);
-                setSettingsOpen(true);
-              }} disabled={!details?.members.find((member) => member.userId === residentId)?.isAdmin}><Settings2 className="h-5 w-5" /></Button>
+            <GroupAvatar imageUrl={details?.imageUrl ?? selectedGroup?.imageUrl ?? null} name={details?.name ?? selectedGroup?.name ?? "Group conversation"} size="h-10 w-10" />
+            <div className="min-w-0 flex-1"><h1 className="truncate text-sm font-bold">{details?.name ?? selectedGroup?.name ?? "Opening conversation…"}</h1><p className="text-xs text-muted-foreground">{details?.members.length ?? 0} group members</p></div>
+            <Button variant="ghost" size="icon" aria-label="Group settings" onClick={openGroupSettings} disabled={!currentMember || !selectedGroup}><Settings2 className="h-5 w-5" /></Button>
           </>
         ) : (
           <>
@@ -481,7 +545,7 @@ export function GroupChatPanel({
         )}
       </header>
 
-      {selectedGroup ? (
+      {selectedGroupId ? selectedGroup ? (
         <section
           className="flex min-h-0 flex-1 flex-col"
           style={{
@@ -499,10 +563,11 @@ export function GroupChatPanel({
             <div className="mx-auto mb-5 rounded-full bg-white/80 px-4 py-2 text-center text-xs text-muted-foreground shadow-sm">
               <span className="font-semibold text-foreground">{details?.members.length ?? 0} members</span> · Messages are visible to everyone in the group.
               <button type="button" onClick={() => void shareQr()} disabled={sendingMessage} className="ml-3 inline-flex items-center gap-1 font-semibold text-primary hover:underline"><QrCode className="h-3.5 w-3.5" />Share QR</button>
-              <button type="button" onClick={() => { setName(details?.name ?? selectedGroup.name); setTheme((details?.theme ?? selectedGroup.theme) as keyof typeof THEMES); setPhoto(null); setThemePhoto(null); setSelectedMemberIds([]); setSettingsOpen(true); }} className="ml-3 inline-flex items-center gap-1 font-semibold text-primary hover:underline"><Users className="h-3.5 w-3.5" />Add members</button>
+              {isGroupAdmin && <button type="button" onClick={openGroupSettings} className="ml-3 inline-flex items-center gap-1 font-semibold text-primary hover:underline"><Users className="h-3.5 w-3.5" />Add members</button>}
             </div>
             {details?.messages.map((item) => {
-              const sender = details.members.find((member) => member.userId === item.senderId)?.user;
+              const senderMember = details.members.find((member) => member.userId === item.senderId);
+              const sender = senderMember?.user;
               const qrCode = getGroupQrCode(item.content);
               const mine = item.senderId === residentId;
               const seenBy = mine ? details.members.filter((member) =>
@@ -512,13 +577,49 @@ export function GroupChatPanel({
                 <div key={item.id} className={cn("mb-4 flex w-full items-end gap-2", mine && "flex-row-reverse")}>
                   {!mine && <Avatar className="h-8 w-8 shrink-0"><AvatarImage src={sender?.image ?? undefined} /><AvatarFallback>{displayName(sender ?? { id: item.senderId, name: null, image: null }).slice(0, 1)}</AvatarFallback></Avatar>}
                   <div className={cn("max-w-[min(82%,560px)]", mine ? "items-end" : "items-start")}>
-                    {!mine && <p className="mb-1 ml-1 text-[10px] font-semibold text-muted-foreground">{sender ? displayName(sender) : "Group member"}</p>}
-                    <div className={cn("rounded-2xl px-4 py-3 shadow-sm", mine ? "rounded-br-md bg-primary text-white" : "rounded-bl-md border border-white/70 bg-white/90 text-foreground")}>
+                    {!mine && <p className="mb-1 ml-1 text-[10px] font-semibold text-muted-foreground">{senderMember ? displayMemberName(senderMember) : "Group member"}</p>}
+                    <div
+                      className={cn("relative rounded-2xl border-0 px-4 py-3 shadow-sm touch-manipulation", mine ? "rounded-br-md bg-primary text-white" : "rounded-bl-md bg-white/90 text-foreground")}
+                      onPointerDown={() => startReactionHold(item.id)}
+                      onPointerUp={cancelReactionHold}
+                      onPointerCancel={cancelReactionHold}
+                      onPointerLeave={cancelReactionHold}
+                      onContextMenu={(event) => { event.preventDefault(); openReactionPicker(item.id); }}
+                    >
+                      <AnimatePresence>
+                        {activeReactionMessageId === item.id && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10, scale: 0.8, rotateX: -18 }}
+                            animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.85 }}
+                            transition={{ type: "spring", stiffness: 420, damping: 24 }}
+                            className="absolute -top-14 right-0 z-20 flex origin-bottom-right items-center gap-1 rounded-full border border-white/80 bg-white/95 p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.2)] [transform-style:preserve-3d]"
+                            role="group"
+                            aria-label="Choose a reaction"
+                          >
+                            {REACTIONS.map((reaction) => (
+                              <motion.button
+                                key={reaction.kind}
+                                type="button"
+                                whileHover={{ scale: 1.22, rotate: -8, z: 12 }}
+                                whileTap={{ scale: 0.86 }}
+                                title={`React ${reaction.emoji}`}
+                                aria-label={`React ${reaction.emoji}`}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => void reactToMessage(item.id, reaction.kind)}
+                                className="flex h-9 w-9 items-center justify-center rounded-full text-xl transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              >
+                                {reaction.emoji}
+                              </motion.button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                       {qrCode ? (
                         <button
                           type="button"
                           disabled={mine}
-                          onClick={() => void openGroupTransfer(qrCode, sender ? displayName(sender) : "group member")}
+                          onClick={() => void openGroupTransfer(qrCode, senderMember ? displayMemberName(senderMember) : "group member")}
                           className="flex flex-col items-center gap-2 rounded-xl bg-white p-3 text-center text-foreground transition hover:shadow-md disabled:cursor-default"
                         >
                           <QRCode value={qrCode} size={176} />
@@ -532,16 +633,18 @@ export function GroupChatPanel({
                     </div>
                     <div className={cn("mt-1 flex items-center gap-1", mine && "justify-end")}>
                       <button type="button" title="Forward message" aria-label="Forward message" onClick={() => onForward(item.id)} className="mr-1 rounded-lg p-1.5 text-muted-foreground transition hover:bg-white hover:text-primary"><Forward className="h-3.5 w-3.5" /></button>
+                      <button type="button" title="Add a reaction" aria-label="Add a reaction" onClick={() => openReactionPicker(item.id)} className="mr-1 rounded-lg p-1.5 text-muted-foreground transition hover:bg-white hover:text-primary"><SmilePlus className="h-3.5 w-3.5" /></button>
                       {REACTIONS.map((reaction) => {
                         const count = item.reactions.filter((entry) => entry.kind === reaction.kind).length;
                         const selected = item.reactions.some((entry) => entry.kind === reaction.kind && entry.userId === residentId);
+                        if (count === 0) return null;
                         return (
-                          <button key={reaction.kind} type="button" title={`React ${reaction.emoji}`} onClick={() => void reactToMessage(item.id, reaction.kind)} className={cn("rounded-full px-1.5 py-0.5 text-xs transition hover:scale-110", selected || count ? "bg-white shadow-sm" : "opacity-40 hover:opacity-100")}>
+                          <button key={reaction.kind} type="button" title={`${count} reaction${count === 1 ? "" : "s"}${selected ? ", including yours" : ""}`} onClick={() => openReactionPicker(item.id)} className={cn("rounded-full px-1.5 py-0.5 text-xs transition hover:scale-110", selected || count ? "bg-white shadow-sm" : "opacity-40 hover:opacity-100")}>
                             {reaction.emoji}{count > 0 && <span className="ml-1 text-[10px]">{count}</span>}
                           </button>
                         );
                       })}
-                      {mine && seenBy.map((member) => <Avatar key={member.userId} title={`Seen by ${displayName(member.user)}`} className="h-5 w-5 border border-white"><AvatarImage src={member.user.image ?? undefined} /><AvatarFallback className="text-[8px]">{displayName(member.user).slice(0, 1)}</AvatarFallback></Avatar>)}
+                      {mine && seenBy.map((member) => <Avatar key={member.userId} title={`Seen by ${displayMemberName(member)}`} className="h-5 w-5 border border-white"><AvatarImage src={member.user.image ?? undefined} /><AvatarFallback className="text-[8px]">{displayMemberName(member).slice(0, 1)}</AvatarFallback></Avatar>)}
                     </div>
                   </div>
                 </div>
@@ -564,7 +667,7 @@ export function GroupChatPanel({
             }} />
             <button type="button" title="Attach an image or video" aria-label="Attach an image or video" onClick={() => mediaInputRef.current?.click()} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Paperclip className="h-5 w-5" /></button>
             <div className="relative min-w-0 flex-1">
-              {mentionMatches.length > 0 && <div className="absolute bottom-full left-0 z-20 mb-2 max-h-48 w-full overflow-y-auto rounded-2xl border border-border bg-white p-2 shadow-xl">{mentionMatches.map((member) => <button key={member.userId} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => addMention(member)} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm hover:bg-primary/5"><Avatar className="h-8 w-8"><AvatarImage src={member.user.image ?? undefined} /><AvatarFallback>{displayName(member.user).slice(0, 1)}</AvatarFallback></Avatar><span className="truncate">{displayName(member.user)}</span></button>)}</div>}
+              {mentionMatches.length > 0 && <div className="absolute bottom-full left-0 z-20 mb-2 max-h-48 w-full overflow-y-auto rounded-2xl border border-border bg-white p-2 shadow-xl">{mentionMatches.map((member) => <button key={member.userId} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => addMention(member)} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm hover:bg-primary/5"><Avatar className="h-8 w-8"><AvatarImage src={member.user.image ?? undefined} /><AvatarFallback>{displayMemberName(member).slice(0, 1)}</AvatarFallback></Avatar><span className="truncate">{displayMemberName(member)}</span></button>)}</div>}
               <textarea ref={messageInputRef} value={message} onChange={(event) => {
                 setMessage(event.target.value);
                 const beforeCursor = event.target.value.slice(0, event.target.selectionStart);
@@ -575,6 +678,13 @@ export function GroupChatPanel({
             <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={(!message.trim() && !attachment) || sendingMessage} aria-label="Send group message"><Send className="h-4 w-4" /></Button>
             </div>
           </form>
+        </section>
+      ) : (
+        <section className="flex min-h-0 flex-1 items-center justify-center bg-slate-50/70 p-6" aria-live="polite">
+          <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-white px-5 py-4 text-sm text-muted-foreground shadow-sm">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+            Opening group conversation…
+          </div>
         </section>
       ) : (
         <section className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 p-4 sm:p-7">
@@ -602,21 +712,22 @@ export function GroupChatPanel({
       <AnimatePresence>
         {(createOpen || settingsOpen) && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="group-form-title">
-            <motion.form initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10 }} onSubmit={(event) => { if (createOpen) void createGroup(event); else void saveSettings(event); }} className="max-h-[90dvh] w-full max-w-lg space-y-5 overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-7">
+            <motion.form initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10 }} onSubmit={(event) => { if (createOpen) void createGroup(event); else if (isGroupAdmin) void saveSettings(event); else event.preventDefault(); }} className="max-h-[90dvh] w-full max-w-lg space-y-5 overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-7">
               <div className="flex items-start justify-between"><div><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">{createOpen ? <Users className="h-5 w-5" /> : <Settings2 className="h-5 w-5" />}</span><h2 id="group-form-title" className="mt-3 text-lg font-bold">{createOpen ? "Create your group" : "Group settings"}</h2><p className="mt-1 text-sm text-muted-foreground">{createOpen ? "Invite at least three resident friends to get started." : "Make this conversation feel like your group."}</p></div><button type="button" aria-label="Close group form" onClick={() => { setCreateOpen(false); setSettingsOpen(false); }} className="rounded-full p-2 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button></div>
-              <label className="block text-sm font-medium">Group name<input required minLength={2} maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="The Green Team" className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 outline-none focus:border-primary/50" /></label>
-              <div><p className="mb-2 flex items-center gap-2 text-sm font-medium"><Palette className="h-4 w-4 text-primary" />Shared theme</p><div className="grid grid-cols-5 gap-2">{Object.entries(THEMES).map(([key, option]) => <button key={key} type="button" aria-label={`${option.label} theme`} title={option.label} onClick={() => setTheme(key as keyof typeof THEMES)} className={cn("h-10 rounded-xl border-2 transition hover:scale-105", theme === key ? "border-primary" : "border-white shadow")} style={{ background: option.background }} />)}</div></div>
-              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-border px-3 py-3 transition hover:border-primary/40"><ImagePlus className="h-5 w-5 text-primary" /><span className="min-w-0 flex-1 truncate text-sm">{photo?.name ?? (details?.imageUrl ? "Change group picture (optional)" : "Add a group picture (optional)")}</span><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} /></label>
-              {!createOpen && <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-primary/30 bg-primary/5 px-3 py-3 transition hover:border-primary/50"><ImagePlus className="h-5 w-5 text-primary" /><span className="min-w-0 flex-1 truncate text-sm">{themePhoto?.name ?? (details?.themeImageUrl ? "Replace custom theme picture" : "Upload a custom theme picture")}</span><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => setThemePhoto(event.target.files?.[0] ?? null)} /></label>}
+              {(createOpen || isGroupAdmin) && <label className="block text-sm font-medium">Group name<input required minLength={2} maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="The Green Team" className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 outline-none focus:border-primary/50" /></label>}
+              {(createOpen || isGroupAdmin) && <div><p className="mb-2 flex items-center gap-2 text-sm font-medium"><Palette className="h-4 w-4 text-primary" />Shared theme</p><div className="grid grid-cols-5 gap-2">{Object.entries(THEMES).map(([key, option]) => <button key={key} type="button" aria-label={`${option.label} theme`} title={option.label} onClick={() => setTheme(key as keyof typeof THEMES)} className={cn("h-10 rounded-xl border-2 transition hover:scale-105", theme === key ? "border-primary" : "border-white shadow")} style={{ background: option.background }} />)}</div></div>}
+              {(createOpen || isGroupAdmin) && <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-border px-3 py-3 transition hover:border-primary/40"><ImagePlus className="h-5 w-5 text-primary" /><span className="min-w-0 flex-1 truncate text-sm">{photo?.name ?? (details?.imageUrl ? "Change group picture (optional)" : "Add a group picture (optional)")}</span><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} /></label>}
+              {!createOpen && <section className="space-y-3 rounded-2xl border border-primary/15 bg-primary/5 p-4"><div><p className="text-sm font-semibold">Your nickname in this group</p><p className="text-xs text-muted-foreground">Only you can set your nickname. Leave it blank to use your account name.</p></div><label className="sr-only" htmlFor="group-nickname">Your group nickname</label><input id="group-nickname" maxLength={32} value={nickname} onChange={(event) => setNickname(event.target.value)} placeholder={currentMember ? displayName(currentMember.user) : "Your nickname"} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-primary/50" /><Button type="button" variant="outline" className="w-full" disabled={working || nickname.trim() === (currentMember?.nickname ?? "")} onClick={() => void saveNickname()}>{working ? "Saving..." : "Save my nickname"}</Button></section>}
+              {!createOpen && isGroupAdmin && <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-primary/30 bg-primary/5 px-3 py-3 transition hover:border-primary/50"><ImagePlus className="h-5 w-5 text-primary" /><span className="min-w-0 flex-1 truncate text-sm">{themePhoto?.name ?? (details?.themeImageUrl ? "Replace custom theme picture" : "Upload a custom theme picture")}</span><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => setThemePhoto(event.target.files?.[0] ?? null)} /></label>}
               {createOpen && <div><p className="mb-2 text-sm font-semibold">Invite friends <span className="font-normal text-muted-foreground">· {memberIds.length} selected, 3 required</span></p><div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border/70 p-2">{friends.map((friend) => {
                 const checked = memberIds.includes(friend.id);
                 return <button key={friend.id} type="button" onClick={() => setMemberIds((current) => checked ? current.filter((id) => id !== friend.id) : [...current, friend.id])} className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition", checked ? "bg-primary/10" : "hover:bg-muted/60")}><Avatar className="h-9 w-9"><AvatarImage src={friend.image ?? undefined} /><AvatarFallback>{displayName(friend).slice(0, 1)}</AvatarFallback></Avatar><span className="min-w-0 flex-1 truncate text-sm font-medium">{displayName(friend)}</span><span className={cn("flex h-5 w-5 items-center justify-center rounded-md border", checked ? "border-primary bg-primary text-white" : "border-border")}>{checked && <Check className="h-3.5 w-3.5" />}</span></button>;
               })}{!friends.length && <p className="p-3 text-center text-sm text-muted-foreground">Add resident friends before creating a group.</p>}</div></div>}
-              {!createOpen && details?.members.find((member) => member.userId === residentId)?.isAdmin && <section className="space-y-2 rounded-2xl border border-border/70 p-3"><div><p className="text-sm font-semibold">Add group members</p><p className="text-xs text-muted-foreground">Only resident friends can be invited.</p></div><div className="max-h-36 space-y-1 overflow-y-auto">{friends.filter((friend) => !details.members.some((member) => member.userId === friend.id)).map((friend) => {
+              {!createOpen && isGroupAdmin && details && <section className="space-y-2 rounded-2xl border border-border/70 p-3"><div><p className="text-sm font-semibold">Add group members</p><p className="text-xs text-muted-foreground">Only resident friends can be invited.</p></div><div className="max-h-36 space-y-1 overflow-y-auto">{friends.filter((friend) => !details.members.some((member) => member.userId === friend.id)).map((friend) => {
                 const checked = selectedMemberIds.includes(friend.id);
                 return <button key={friend.id} type="button" onClick={() => setSelectedMemberIds((current) => checked ? current.filter((id) => id !== friend.id) : [...current, friend.id])} className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left", checked ? "bg-primary/10" : "hover:bg-muted/60")}><Avatar className="h-8 w-8"><AvatarImage src={friend.image ?? undefined} /><AvatarFallback>{displayName(friend).slice(0, 1)}</AvatarFallback></Avatar><span className="flex-1 truncate text-sm">{displayName(friend)}</span>{checked && <Check className="h-4 w-4 text-primary" />}</button>;
               })}</div><Button type="button" variant="outline" size="sm" className="w-full" disabled={working || !selectedMemberIds.length} onClick={() => void addMembers()}>{working ? "Adding..." : `Add ${selectedMemberIds.length || ""} selected member${selectedMemberIds.length === 1 ? "" : "s"}`}</Button></section>}
-              <div className="flex gap-3"><Button type="button" variant="outline" className="flex-1" disabled={working} onClick={() => { setCreateOpen(false); setSettingsOpen(false); }}>Cancel</Button><Button type="submit" className="flex-1" disabled={working || name.trim().length < 2 || (createOpen && groupFriends.length < 3)}>{working ? "Saving..." : createOpen ? "Create group" : "Save changes"}</Button></div>
+              <div className="flex gap-3"><Button type="button" variant="outline" className="flex-1" disabled={working} onClick={() => { setCreateOpen(false); setSettingsOpen(false); }}>Close</Button>{(createOpen || isGroupAdmin) && <Button type="submit" className="flex-1" disabled={working || name.trim().length < 2 || (createOpen && groupFriends.length < 3)}>{working ? "Saving..." : createOpen ? "Create group" : "Save changes"}</Button>}</div>
             </motion.form>
           </motion.div>
         )}

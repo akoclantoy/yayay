@@ -25,7 +25,7 @@ export function MessageMedia({
           preload="metadata"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
-          className="mb-2 max-h-[360px] max-w-full rounded-xl bg-black"
+          className="mb-2 max-h-[360px] max-w-full rounded-2xl border-0 bg-black"
           aria-label={alt}
         />
       ) : (
@@ -35,7 +35,7 @@ export function MessageMedia({
             event.stopPropagation();
             setExpanded(true);
           }}
-          className="mb-2 block max-w-full overflow-hidden rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="mb-2 block max-w-full overflow-hidden rounded-2xl border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           aria-label={`View ${alt.toLowerCase()} full size`}
         >
           <Image
@@ -70,7 +70,7 @@ export function MessageMedia({
             width={1600}
             height={1200}
             unoptimized
-            className="max-h-[90dvh] w-auto max-w-full rounded-xl object-contain"
+            className="max-h-[90dvh] w-auto max-w-full rounded-2xl border-0 object-contain"
             onClick={(event) => event.stopPropagation()}
           />
         </div>

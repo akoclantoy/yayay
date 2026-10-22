@@ -1447,7 +1447,7 @@ export function ResidentMessenger({
                               : editMessageId !== message.id && mine
                                 ? "rounded-br-md bg-primary text-white"
                                 : editMessageId !== message.id && !message.systemMessage
-                                  ? "rounded-bl-md border border-white/70 bg-white/90 text-foreground"
+                                  ? "rounded-bl-md border-0 bg-white/90 text-foreground"
                                   : "",
                           )}>
                           {message.systemMessage && (
