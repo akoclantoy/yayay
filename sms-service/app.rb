@@ -17,7 +17,8 @@ def authorized_request?
 end
 
 def semaphore_send(number, message)
-  api_key = ENV["SEMAPHORE_API_KEY"]
+  api_key = ENV["SMS_API_KEY"]
+  api_key = ENV["SEMAPHORE_API_KEY"] if api_key.nil? || api_key.empty?
   raise "Semaphore is not configured" if api_key.nil? || api_key.empty?
 
   uri = URI("https://api.semaphore.co/api/v4/messages")

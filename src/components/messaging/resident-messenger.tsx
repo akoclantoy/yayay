@@ -101,6 +101,7 @@ type MessengerData = {
   incomingRequests: FriendRequest[];
   outgoingRequests: FriendRequest[];
 };
+type MessengerBootstrap = { friends: MessengerData; conversations: Conversation[] };
 type Tab = "inbox" | "friends" | "requests" | "directory" | "groups" | "profile";
 type ForwardGroup = { id: string; name: string; imageUrl: string | null };
 type GroupInboxItem = {
@@ -193,6 +194,18 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isMessengerBootstrap(value: unknown): value is MessengerBootstrap {
+  if (!isRecord(value) || !isRecord(value.friends)) return false;
+  return Array.isArray(value.friends.friends) &&
+    Array.isArray(value.friends.incomingRequests) &&
+    Array.isArray(value.friends.outgoingRequests) &&
+    Array.isArray(value.conversations);
+}
+
 export function ResidentMessenger({
   residentName,
   residentId,
@@ -277,17 +290,28 @@ export function ResidentMessenger({
 
   const refresh = useCallback(async (force = true) => {
     setError(null);
-    const result = await loadCachedMessengerData(
-      `messenger-bootstrap:${residentId}`,
-      async () => {
-        const [friendsResponse, conversationsResponse] = await Promise.all([
-          requestJson<MessengerData>("/api/resident/friends"),
-          requestJson<{ conversations: Conversation[] }>("/api/resident/direct-messages"),
-        ]);
-        return { friends: friendsResponse, conversations: conversationsResponse.conversations };
-      },
-      force,
-    );
+    const cacheKey = `messenger-bootstrap:${residentId}`;
+    const loadBootstrap = async (): Promise<MessengerBootstrap> => {
+      const [friendsResponse, conversationsResponse] = await Promise.all([
+        requestJson<MessengerData>("/api/resident/friends"),
+        requestJson<{ conversations: Conversation[] }>("/api/resident/direct-messages"),
+      ]);
+      const result = {
+        friends: friendsResponse,
+        conversations: conversationsResponse.conversations,
+      };
+      if (!isMessengerBootstrap(result)) {
+        throw new Error("The messaging service returned an invalid inbox response.");
+      }
+      return result;
+    };
+    let result = await loadCachedMessengerData(cacheKey, loadBootstrap, force);
+    if (!isMessengerBootstrap(result)) {
+      result = await loadCachedMessengerData(cacheKey, loadBootstrap, true);
+    }
+    if (!isMessengerBootstrap(result)) {
+      throw new Error("The messaging service returned an invalid cached inbox response.");
+    }
     setData(result.friends);
     setConversations(result.conversations);
   }, [residentId]);

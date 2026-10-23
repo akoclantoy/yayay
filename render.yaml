@@ -21,6 +21,8 @@ services:
         value: http://ecorewards-sms:10000
       - key: SMS_SERVICE_TOKEN
         generateValue: true
+      - key: SMS_API_KEY
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
@@ -55,6 +57,11 @@ services:
           type: web
           name: ecorewards
           envVarKey: SMS_SERVICE_TOKEN
+      - key: SMS_API_KEY
+        fromService:
+          type: web
+          name: ecorewards
+          envVarKey: SMS_API_KEY
       - key: SEMAPHORE_API_KEY
         sync: false
       - key: SMS_SENDER_NAME

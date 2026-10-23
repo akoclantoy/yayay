@@ -1,5 +1,9 @@
 type CacheEntry = { value: unknown; storedAt: number };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 const dataCache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<unknown>>();
 const CACHE_TTL_MS = 20_000;
@@ -55,7 +59,11 @@ export function prefetchMessengerData(residentId: string) {
       friendsResponse.json(),
       conversationsResponse.json(),
     ]);
-    return { friends, conversations };
+    if (!isRecord(friends) || !Array.isArray(friends.friends) ||
+      !isRecord(conversations) || !Array.isArray(conversations.conversations)) {
+      throw new Error("Could not prefetch resident messages: the response was invalid.");
+    }
+    return { friends, conversations: conversations.conversations };
   }).catch((error: unknown) => {
     console.error("[messenger-cache] Could not prefetch inbox:", error);
   });
