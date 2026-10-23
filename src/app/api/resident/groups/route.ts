@@ -74,7 +74,7 @@ export async function GET(request: Request) {
           },
           messages: {
             where: { deletedAt: null },
-            orderBy: { createdAt: "asc" },
+            orderBy: { createdAt: "desc" },
             take: 250,
             select: {
               id: true,
@@ -91,7 +91,7 @@ export async function GET(request: Request) {
         },
       });
       if (!group) return NextResponse.json({ error: "Group not found" }, { status: 404 });
-      return NextResponse.json({ group });
+      return NextResponse.json({ group: { ...group, messages: [...group.messages].reverse() } });
     }
 
     const groups = await db.groupConversation.findMany({

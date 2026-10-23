@@ -137,9 +137,12 @@ export function GroupChatPanel({
   const [error, setError] = useState<string | null>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const reactionHoldTimerRef = useRef<number | null>(null);
 
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
+  const latestGroupMessageId = details?.messages.at(-1)?.id;
   const currentMember = details?.members.find((member) => member.userId === residentId) ?? null;
   const isGroupAdmin = Boolean(currentMember?.isAdmin);
   const currentTheme = THEMES[(details?.theme ?? selectedGroup?.theme ?? "forest") as keyof typeof THEMES] ?? THEMES.forest;
@@ -154,6 +157,16 @@ export function GroupChatPanel({
     setDetails(result.group);
     return result.group;
   }, []);
+
+  useEffect(() => {
+    shouldAutoScrollRef.current = true;
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    if (details?.id !== selectedGroupId || !shouldAutoScrollRef.current) return;
+    const history = historyRef.current;
+    if (history) history.scrollTop = history.scrollHeight;
+  }, [details?.id, details?.messages.length, latestGroupMessageId, selectedGroupId]);
 
   useEffect(() => {
     let active = true;
@@ -251,7 +264,7 @@ export function GroupChatPanel({
   }
 
   async function shareQr() {
-    if (!selectedGroupId) return;
+    if (!selectedGroupId || sendingMessage) return;
     setSendingMessage(true);
     setError(null);
     try {
@@ -534,6 +547,21 @@ export function GroupChatPanel({
           <>
             <GroupAvatar imageUrl={details?.imageUrl ?? selectedGroup?.imageUrl ?? null} name={details?.name ?? selectedGroup?.name ?? "Group conversation"} size="h-10 w-10" />
             <div className="min-w-0 flex-1"><h1 className="truncate text-sm font-bold">{details?.name ?? selectedGroup?.name ?? "Opening conversation…"}</h1><p className="text-xs text-muted-foreground">{details?.members.length ?? 0} group members</p></div>
+            <Button
+              type="button"
+              variant="ghost"
+              aria-label="Share your QR code in this group"
+              title="Share your QR code"
+              onClick={() => void shareQr()}
+              disabled={sendingMessage || !currentMember}
+              className="h-10 gap-2 rounded-full border border-[#cfe4ff] bg-[#e7f3ff] px-3 text-[#0866ff] shadow-sm transition hover:bg-[#d9ebff] hover:text-[#075ce5] focus-visible:ring-2 focus-visible:ring-[#0866ff] focus-visible:ring-offset-2 disabled:opacity-50"
+            >
+              <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-[#cfe4ff]">
+                <QrCode className="h-[17px] w-[17px]" strokeWidth={2.4} />
+                <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#0866ff] text-[10px] font-bold leading-none text-white ring-2 ring-[#e7f3ff]">+</span>
+              </span>
+              <span className="hidden text-sm font-semibold sm:inline">Share QR</span>
+            </Button>
             <Button variant="ghost" size="icon" aria-label="Group settings" onClick={openGroupSettings} disabled={!currentMember || !selectedGroup}><Settings2 className="h-5 w-5" /></Button>
           </>
         ) : (
@@ -559,10 +587,17 @@ export function GroupChatPanel({
               : {}),
           }}
         >
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-8">
+          <div
+            ref={historyRef}
+            onScroll={(event) => {
+              const viewport = event.currentTarget;
+              shouldAutoScrollRef.current =
+                viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 120;
+            }}
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-8"
+          >
             <div className="mx-auto mb-5 rounded-full bg-white/80 px-4 py-2 text-center text-xs text-muted-foreground shadow-sm">
               <span className="font-semibold text-foreground">{details?.members.length ?? 0} members</span> · Messages are visible to everyone in the group.
-              <button type="button" onClick={() => void shareQr()} disabled={sendingMessage} className="ml-3 inline-flex items-center gap-1 font-semibold text-primary hover:underline"><QrCode className="h-3.5 w-3.5" />Share QR</button>
               {isGroupAdmin && <button type="button" onClick={openGroupSettings} className="ml-3 inline-flex items-center gap-1 font-semibold text-primary hover:underline"><Users className="h-3.5 w-3.5" />Add members</button>}
             </div>
             {details?.messages.map((item) => {
