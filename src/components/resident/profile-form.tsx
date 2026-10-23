@@ -95,8 +95,16 @@ export function ProfileForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Update failed");
+      const data = await res.json() as {
+        error?: string | { fieldErrors?: Record<string, string[]> };
+      };
+      if (!res.ok) {
+        const message =
+          typeof data.error === "string"
+            ? data.error
+            : Object.values(data.error?.fieldErrors ?? {}).flat()[0] ?? "Update failed";
+        throw new Error(message);
+      }
       await update();
       router.refresh();
       toast.success("Profile updated", { description: "Your barangay and resident details are saved." });
@@ -198,7 +206,7 @@ export function ProfileForm({
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Phone number</Label>
-              <Input id="phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} autoComplete="tel" />
+              <Input id="phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} autoComplete="tel" required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="barangay">Barangay</Label>

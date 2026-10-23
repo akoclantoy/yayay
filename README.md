@@ -100,9 +100,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Demo Accounts
 
-After seeding, log in with:
+Sign in with the phone number saved on each account and its password. The seeded admin and staff accounts do not use synthetic SMS phone numbers; an administrator must enter each account's real phone number in the database before those accounts can be used. The seeded resident example uses the phone stored by the seed script.
 
-| Role | Email | Password |
+| Role | Account email (for recovery lookup) | Password |
 |---|---|---|
 | Admin | `admin@example.com` | `Admin123!` |
 | Collection Staff | `staff@example.com` | `Staff123!` |
@@ -214,7 +214,7 @@ If you deleted your old Render database and created a new one:
 3. Open `https://YOUR-SERVICE.onrender.com/api/health`
    - Should return `"status": "ok"` and `"users": 3` (or more)
 4. Log in at `/login` with:
-   - Admin: `admin@example.com` / `Admin123!`
+   - Admin: enter the phone number saved on the admin account and `Admin123!`. If the account has no phone yet, assign one directly in the database first.
 
 Local repair:
 
@@ -277,17 +277,17 @@ Optional:
 
 **SMS account recovery:** Recovery works for any active account role (resident, staff, or admin) that has a valid registered phone number. The Render Blueprint creates the private Ruby service `ecorewards-sms`. Set the Semaphore key as `SMS_API_KEY` on the `ecorewards` service; Render passes it privately to `ecorewards-sms`, which sends the SMS. The SMS worker also accepts the legacy `SEMAPHORE_API_KEY` variable as a fallback. The Blueprint shares a generated `SMS_SERVICE_TOKEN` with the Next.js service. Keep both Render services in the same region so the private service URL works. For a manual deployment, set `SMS_API_KEY` (or legacy `SEMAPHORE_API_KEY`) and a strong `SMS_SERVICE_TOKEN` on the SMS service, then set the same token plus the private service URL as `SMS_SERVICE_TOKEN` and `SMS_SERVICE_URL` on the Next.js service. Locally, Ruby service dependencies must be installed and the service started separately; configure those service variables in the appropriate local environment.
 
-Recovery codes are sent only to a unique active account match with a valid registered phone number. In this project, “account name” is the saved user name (there is no separate username field). Accounts without a phone number, or accounts whose names are not unique, must use their email as the lookup identifier and have a phone number added to their profile before SMS recovery can work. Codes expire after 5 minutes, allow up to 5 attempts, and requests are throttled.
+Recovery requires the account email/name and the same valid registered phone number stored on the account. In this project, “account name” is the saved user name (there is no separate username field). The entered number is only used to confirm a match; codes are sent to the saved number. Codes expire after 5 minutes, allow up to 5 attempts, and requests are throttled. Sign-in uses phone number plus password. Google users must add a phone number before entering a protected portal, and existing phone-less accounts must have their number assigned before phone-based sign-in is possible.
 
 ### 5. Deploy
 
 After the first successful deploy, open your Render URL and log in with seeded demo accounts:
 
-| Role | Email | Password |
+| Role | Sign-in | Password |
 |---|---|---|
-| Admin | `admin@example.com` | `Admin123!` |
-| Staff | `staff@example.com` | `Staff123!` |
-| Resident | `resident@example.com` | `Resident123!` |
+| Admin | Phone number saved on the admin account | `Admin123!` |
+| Staff | Phone number saved on the staff account | `Staff123!` |
+| Resident | Phone number saved on the resident account | `Resident123!` |
 
 **Google OAuth on Render:** Add authorized redirect URI:
 

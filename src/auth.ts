@@ -10,6 +10,8 @@ import { loginSchema } from "@/lib/validators/auth";
 import { authConfig } from "@/auth.config";
 import { ensureDemoUsers } from "@/lib/bootstrap-users";
 import { mockAuthenticate, shouldUseMockAuth } from "@/lib/mock-auth";
+import { normalizePhilippinePhone } from "@/lib/sms-recovery";
+import { findUsersWithPhone } from "@/lib/phone";
 
 class EmailNotVerifiedError extends CredentialsSignin {
   code = "email_not_verified";
@@ -65,25 +67,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Credentials({
       name: "credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
+        phone: { label: "Phone number", type: "tel" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email = String(credentials?.email ?? "").trim().toLowerCase();
+        const submittedPhone = String(credentials?.phone ?? "").trim();
+        const phone = normalizePhilippinePhone(submittedPhone);
         const password = String(credentials?.password ?? "");
-        const parsed = loginSchema.safeParse({ email, password });
+        const parsed = loginSchema.safeParse({ phone: submittedPhone, password });
         if (!parsed.success) return null;
+        if (!phone) return null;
 
         try {
           await ensureDemoUsers();
-          const user = await db.user.findUnique({
-            where: { email: parsed.data.email },
-          });
+          const phoneMatches = await findUsersWithPhone(phone);
+          const users = phoneMatches.length
+            ? await db.user.findMany({
+                where: {
+                  id: { in: phoneMatches.map((match) => match.id) },
+                },
+              })
+            : [];
+          const user = users.length === 1 ? users[0] : null;
 
           if (!user?.passwordHash || user.deletedAt || !user.isActive) {
             if (process.env.NODE_ENV !== "production" && shouldUseMockAuth()) {
               const mockResult = await mockAuthenticate(
-                parsed.data.email,
+                phone,
                 parsed.data.password
               );
               if (mockResult.success && "user" in mockResult) {
@@ -103,7 +113,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (!valid) {
             if (process.env.NODE_ENV !== "production" && shouldUseMockAuth()) {
               const mockResult = await mockAuthenticate(
-                parsed.data.email,
+                phone,
                 parsed.data.password
               );
               if (mockResult.success && "user" in mockResult) {
@@ -142,7 +152,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
             if (process.env.NODE_ENV !== "production" && shouldUseMockAuth()) {
               const mockResult = await mockAuthenticate(
-                parsed.data.email,
+                phone,
                 parsed.data.password
               );
 
@@ -211,9 +221,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.provider === "google" && user.email) {
         const existing = await db.user.findUnique({
           where: { email: user.email.toLowerCase() },
+          select: { id: true, phone: true, isActive: true, emailVerified: true },
         });
         if (existing && !existing.isActive) return false;
-
         if (existing && !existing.emailVerified) {
           await db.user.update({
             where: { id: existing.id },

@@ -144,6 +144,7 @@ export function StaffSettingsForm({ staff }: { staff: StaffSettingsData }) {
                 id="staff-phone"
                 type="tel"
                 autoComplete="tel"
+                required
                 value={form.phone}
                 onChange={(event) => setForm({ ...form, phone: event.target.value })}
               />

@@ -14,6 +14,7 @@ export function CreateStaffForm() {
   const [form, setForm] = useState({
     name: "",
     email: "",
+    phone: "",
     password: "",
     confirmPassword: "",
   });
@@ -37,7 +38,7 @@ export function CreateStaffForm() {
         throw new Error(String(message));
       }
 
-      setForm({ name: "", email: "", password: "", confirmPassword: "" });
+      setForm({ name: "", email: "", phone: "", password: "", confirmPassword: "" });
       toast.success("Staff account created. They can sign in now.");
       router.refresh();
     } catch (error) {
@@ -74,6 +75,18 @@ export function CreateStaffForm() {
               required
               value={form.email}
               onChange={(event) => setForm({ ...form, email: event.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="staff-phone">Phone number</Label>
+            <Input
+              id="staff-phone"
+              type="tel"
+              autoComplete="tel"
+              placeholder="+63 912 345 6789"
+              required
+              value={form.phone}
+              onChange={(event) => setForm({ ...form, phone: event.target.value })}
             />
           </div>
           <div className="space-y-2">

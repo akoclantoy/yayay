@@ -112,9 +112,8 @@ export default async function AdminUsersPage() {
             <CardTitle className="text-base">Demo login accounts</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-1">
-            <p>Admin: admin@example.com / Admin123!</p>
-            <p>Staff: staff@example.com / Staff123!</p>
-            <p>Resident: resident@example.com / Resident123!</p>
+            <p>Sign in with each account&apos;s registered phone number and password.</p>
+            <p>Seeded admin/staff accounts need a phone number assigned in the database before they can sign in.</p>
           </CardContent>
         </Card>
       </div>

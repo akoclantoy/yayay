@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     const parsed = forgotPasswordSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: "Enter a valid email or account name." }, { status: 400 });
+      return NextResponse.json({ error: "Enter a valid email/account name and phone number." }, { status: 400 });
     }
 
     const identifier = parsed.data.identifier.trim().toLowerCase();
@@ -50,8 +50,14 @@ export async function POST(request: Request) {
       select: { id: true, phone: true },
       take: 2,
     });
-    const user = matches.length === 1 ? matches[0] : null;
-    const phone = normalizePhilippinePhone(user?.phone ?? null);
+    const matchedAccount = matches.length === 1 ? matches[0] : null;
+    const submittedPhone = normalizePhilippinePhone(parsed.data.phone);
+    const storedPhone = normalizePhilippinePhone(matchedAccount?.phone ?? null);
+    const user =
+      matchedAccount && submittedPhone && storedPhone === submittedPhone
+        ? matchedAccount
+        : null;
+    const phone = user ? storedPhone : null;
     const code = createRecoveryCode();
     const challengeResult = await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`sms-recovery:client:${clientHash}`}))`;

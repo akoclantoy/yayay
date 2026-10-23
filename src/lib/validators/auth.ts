@@ -1,7 +1,9 @@
 import { z } from "zod";
 
 export const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  phone: z.string().trim().min(8, "Enter your registered phone number").max(24)
+    .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number")
+    .refine((phone) => phone.replace(/\D/g, "").length >= 8 && phone.replace(/\D/g, "").length <= 15, "Enter a valid phone number"),
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
@@ -15,7 +17,9 @@ export const registerSchema = z
       .regex(/[A-Z]/, "Include at least one uppercase letter")
       .regex(/[0-9]/, "Include at least one number"),
     confirmPassword: z.string(),
-    phone: z.string().trim().optional(),
+    phone: z.string().trim().min(8, "Enter a valid phone number").max(24)
+      .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number")
+      .refine((phone) => phone.replace(/\D/g, "").length >= 8 && phone.replace(/\D/g, "").length <= 15, "Enter a valid phone number"),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
@@ -31,6 +35,9 @@ export const createStaffSchema = z
       .min(8, "Password must be at least 8 characters")
       .regex(/[A-Z]/, "Include at least one uppercase letter")
       .regex(/[0-9]/, "Include at least one number"),
+    phone: z.string().trim().min(8, "Enter a valid phone number").max(24)
+      .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number")
+      .refine((phone) => phone.replace(/\D/g, "").length >= 8 && phone.replace(/\D/g, "").length <= 15, "Enter a valid phone number"),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -40,6 +47,9 @@ export const createStaffSchema = z
 
 export const forgotPasswordSchema = z.object({
   identifier: z.string().trim().min(3, "Enter your registered email or account name").max(254),
+  phone: z.string().trim().min(8, "Enter your registered phone number").max(24)
+    .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number")
+    .refine((phone) => phone.replace(/\D/g, "").length >= 8 && phone.replace(/\D/g, "").length <= 15, "Enter a valid phone number"),
 });
 
 export const verifyRecoveryOtpSchema = z.object({

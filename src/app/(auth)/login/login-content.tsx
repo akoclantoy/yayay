@@ -32,7 +32,7 @@ export default function LoginPage() {
   async function onSubmit(data: LoginInput) {
     try {
       const result = await signIn("credentials", {
-        email: data.email.trim().toLowerCase(),
+        phone: data.phone,
         password: data.password,
         redirect: false,
       });
@@ -43,7 +43,7 @@ export default function LoginPage() {
         // Add specific guidance for database errors
         if (errorToast.title === "Database Connection Error") {
           toast.error(errorToast.title, {
-            description: `${errorToast.message} For demo purposes, you can use: admin@example.com / Admin123!`,
+            description: `${errorToast.message} For demo purposes, use the phone registered on the account.`,
           });
         } else {
           toast.error(errorToast.title, {
@@ -74,7 +74,7 @@ export default function LoginPage() {
       // Add specific guidance for database errors
       if (errorToast.title === "Database Connection Error") {
         toast.error(errorToast.title, {
-          description: `${errorToast.message} For demo purposes, you can use: admin@example.com / Admin123!`,
+          description: `${errorToast.message} For demo purposes, use the phone registered on the account.`,
         });
       } else {
         toast.error(errorToast.title, {
@@ -101,20 +101,21 @@ export default function LoginPage() {
   return (
     <AuthLayout
       title="Welcome back"
-      subtitle="Sign in to your EcoRewards account"
+      subtitle="Sign in with your registered phone number and password"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="phone">Phone number</Label>
           <Input
-            id="email"
-            type="email"
-            placeholder="you@example.com"
-            autoComplete="email"
-            {...register("email")}
+            id="phone"
+            type="tel"
+            placeholder="+63 912 345 6789"
+            autoComplete="tel"
+            required
+            {...register("phone")}
           />
-          {errors.email && (
-            <p className="text-sm text-danger">{errors.email.message}</p>
+          {errors.phone && (
+            <p className="text-sm text-danger">{errors.phone.message}</p>
           )}
         </div>
         <div className="space-y-2">

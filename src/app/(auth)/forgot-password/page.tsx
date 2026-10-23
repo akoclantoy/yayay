@@ -26,6 +26,7 @@ async function postRecovery<T>(url: string, body: unknown): Promise<T> {
 export default function ForgotPasswordPage() {
   const [step, setStep] = useState<RecoveryStep>("identify");
   const [identifier, setIdentifier] = useState("");
+  const [phone, setPhone] = useState("");
   const [challengeId, setChallengeId] = useState("");
   const [code, setCode] = useState("");
   const [resetToken, setResetToken] = useState("");
@@ -54,7 +55,7 @@ export default function ForgotPasswordPage() {
     try {
       const result = await postRecovery<{ challengeId: string; message: string }>(
         "/api/auth/forgot-password",
-        { identifier },
+        { identifier, phone },
       );
       setChallengeId(result.challengeId);
       setStep("verify");
@@ -117,7 +118,7 @@ export default function ForgotPasswordPage() {
     try {
       const result = await postRecovery<{ challengeId: string; message: string }>(
         "/api/auth/forgot-password",
-        { identifier },
+        { identifier, phone },
       );
       setChallengeId(result.challengeId);
       setCode("");
@@ -145,6 +146,20 @@ export default function ForgotPasswordPage() {
     >
       {step === "identify" && (
         <form onSubmit={(event) => void requestCode(event)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="recovery-phone">Registered phone number</Label>
+            <Input
+              id="recovery-phone"
+              type="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              placeholder="+63 912 345 6789"
+              minLength={8}
+              maxLength={24}
+              required
+            />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="account-identifier">Email or username/account name</Label>
             <Input

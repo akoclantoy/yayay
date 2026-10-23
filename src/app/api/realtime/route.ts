@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/api-auth";
 import {
   hasRealtimeDatabaseUrl,
   subscribeToRealtimeChanges,
@@ -21,10 +21,8 @@ function enqueue(
 }
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const authResult = await requireSession();
+  if ("error" in authResult) return authResult.error;
 
   if (!hasRealtimeDatabaseUrl()) {
     return new Response("Realtime database connection is not configured.", {

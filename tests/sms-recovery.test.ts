@@ -9,6 +9,9 @@ import {
 } from "../src/lib/sms-recovery";
 import {
   forgotPasswordSchema,
+  loginSchema,
+  registerSchema,
+  createStaffSchema,
   resetRecoveredPasswordSchema,
   verifyRecoveryOtpSchema,
 } from "../src/lib/validators/auth";
@@ -35,9 +38,32 @@ describe("SMS recovery security helpers", () => {
     assert.equal(normalizePhilippinePhone(null), null);
   });
 
-  it("validates the account identifier and six-digit OTP", () => {
-    assert.equal(forgotPasswordSchema.safeParse({ identifier: "resident@example.com" }).success, true);
-    assert.equal(forgotPasswordSchema.safeParse({ identifier: "ab" }).success, false);
+  it("requires a valid phone for sign-in, registration, staff creation, and recovery", () => {
+    const phone = "+63 917 123 4567";
+    assert.equal(loginSchema.safeParse({ phone, password: "password123" }).success, true);
+    assert.equal(loginSchema.safeParse({ phone: "", password: "password123" }).success, false);
+    const registration = {
+      name: "Resident",
+      email: "resident@example.com",
+      password: "Password123",
+      confirmPassword: "Password123",
+    };
+    assert.equal(registerSchema.safeParse({ ...registration, phone }).success, true);
+    assert.equal(registerSchema.safeParse(registration).success, false);
+    const staff = {
+      name: "Staff Member",
+      email: "staff@example.com",
+      password: "Password123",
+      confirmPassword: "Password123",
+    };
+    assert.equal(createStaffSchema.safeParse({ ...staff, phone }).success, true);
+    assert.equal(createStaffSchema.safeParse(staff).success, false);
+    assert.equal(forgotPasswordSchema.safeParse({ identifier: "resident@example.com", phone }).success, true);
+    assert.equal(forgotPasswordSchema.safeParse({ identifier: "ab", phone }).success, false);
+    assert.equal(forgotPasswordSchema.safeParse({ identifier: "resident@example.com" }).success, false);
+  });
+
+  it("validates the six-digit OTP", () => {
     assert.equal(verifyRecoveryOtpSchema.safeParse({ challengeId: "challenge", code: "123456" }).success, true);
     assert.equal(verifyRecoveryOtpSchema.safeParse({ challengeId: "challenge", code: "12345" }).success, false);
   });

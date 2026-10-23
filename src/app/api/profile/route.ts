@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
+import { normalizePhilippinePhone } from "@/lib/sms-recovery";
+import { findUserWithPhone } from "@/lib/phone";
 
 const schema = z.object({
   name: z.string().min(2).optional(),
-  phone: z.string().optional(),
+  phone: z.string().trim().min(8, "Enter a valid phone number").max(24)
+    .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number"),
   address: z.string().optional(),
   houseNumber: z.string().optional(),
   barangayId: z.string().optional(),
@@ -19,6 +22,16 @@ export async function PATCH(request: Request) {
     const data = schema.parse(await request.json());
     const userId = authResult.session.user.id;
     const barangayId = data.barangayId || null;
+    const phone = normalizePhilippinePhone(data.phone);
+    if (!phone) {
+      return NextResponse.json({ error: "Enter a valid phone number." }, { status: 400 });
+    }
+    if (await findUserWithPhone(phone, userId)) {
+      return NextResponse.json(
+        { error: "That phone number is already associated with another account." },
+        { status: 409 },
+      );
+    }
 
     if (barangayId) {
       const barangay = await db.barangay.findFirst({
@@ -36,12 +49,12 @@ export async function PATCH(request: Request) {
     }
 
     await db.$transaction(async (tx) => {
-      if (data.name || data.phone) {
+      if (data.name || phone) {
         await tx.user.update({
           where: { id: userId },
           data: {
             name: data.name,
-            phone: data.phone,
+            phone,
           },
         });
       }
