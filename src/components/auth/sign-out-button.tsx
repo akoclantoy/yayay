@@ -1,8 +1,10 @@
 "use client";
 
-import { useFormStatus } from "react-dom";
+import { useState } from "react";
+import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { LogOut } from "lucide-react";
-import { signOutToHome } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -15,28 +17,26 @@ export function SignOutButton({
   compact?: boolean;
   className?: string;
 }) {
-  return (
-    <form action={signOutToHome}>
-      <SignOutSubmitButton collapsed={collapsed} compact={compact} className={className} />
-    </form>
-  );
-}
-
-function SignOutSubmitButton({
-  collapsed,
-  compact,
-  className,
-}: {
-  collapsed: boolean;
-  compact: boolean;
-  className?: string;
-}) {
-  const { pending } = useFormStatus();
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
   const label = pending ? "Signing out" : "Sign out";
+
+  async function handleSignOut() {
+    setPending(true);
+    try {
+      await signOut({ redirect: false, redirectTo: "/" });
+      router.replace("/");
+      router.refresh();
+    } catch (error) {
+      console.error("[auth:sign-out]", error);
+      toast.error("Unable to sign out. Please try again.");
+      setPending(false);
+    }
+  }
 
   return (
     <Button
-      type="submit"
+      type="button"
       variant="ghost"
       size="sm"
       className={cn(
@@ -51,6 +51,7 @@ function SignOutSubmitButton({
       disabled={pending}
       aria-label={label}
       title={label}
+      onClick={handleSignOut}
     >
       <LogOut className="h-4 w-4" />
       {!collapsed && !compact && (pending ? "Signing out..." : "Sign out")}

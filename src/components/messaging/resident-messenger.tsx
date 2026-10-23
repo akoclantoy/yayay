@@ -7,14 +7,14 @@ import {
   ArrowLeft,
   Check,
   CheckCheck,
-  ChevronDown,
   Forward,
   ImagePlus,
   MessageCircle,
   MapPin,
   MoreHorizontal,
   Ban,
-  Paperclip,
+  MessageSquarePlus,
+  Plus,
   Pencil,
   Trash2,
   UserRoundX,
@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
 import { getSharedResidentQrCode } from "@/lib/resident-social";
 import { getCachedMessengerData, loadCachedMessengerData, setCachedMessengerData } from "@/components/messaging/messenger-cache";
+import styles from "@/components/messaging/resident-messenger.module.css";
 
 type Resident = { id: string; name: string | null; image: string | null; qrCode?: string; online?: boolean };
 type Friend = Resident & { createdAt?: string };
@@ -134,6 +135,16 @@ const dateFormatter = new Intl.DateTimeFormat("en-PH", {
   minute: "2-digit",
   timeZone: "Asia/Manila",
 });
+
+function relativeTime(date: string) {
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 60_000));
+  if (elapsedMinutes < 1) return "now";
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `${elapsedHours}h`;
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  return elapsedDays < 7 ? `${elapsedDays}d` : new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric" }).format(new Date(date));
+}
 
 const REACTIONS: { kind: ReactionKind; emoji: string; label: string }[] = [
   { kind: "LIKE", emoji: "👍", label: "Like" },
@@ -668,7 +679,7 @@ export function ResidentMessenger({
 
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!activeFriend || (!messageText.trim() && !attachmentFile)) return;
+    if (sendingMessage || !activeFriend || (!messageText.trim() && !attachmentFile)) return;
     setSendingMessage(true);
     setError(null);
     try {
@@ -1157,48 +1168,37 @@ export function ResidentMessenger({
   const currentTheme = THEMES[currentDetails?.theme ?? "forest"] ?? THEMES.forest;
 
   return (
-    <main className="h-[100dvh] w-full overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
-      <section className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white/85">
-        {!activeFriend && <header className="flex h-[76px] shrink-0 items-center justify-between border-b border-border/70 px-4 sm:px-7">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-bold tracking-tight sm:text-base">EcoRewards Messenger</p>
-              <p className="hidden text-xs text-muted-foreground sm:block">Good conversations grow greener communities</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {onPickupMessages && (
-              <Button variant="outline" size="sm" onClick={onPickupMessages}>
-                <MapPin className="h-4 w-4" />
-                <span className="hidden sm:inline">Pickup messages</span>
-              </Button>
-            )}
-            <Link href="/resident" aria-label="Return to resident dashboard" title="Back to dashboard" className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-accent/20 text-primary transition hover:bg-accent/35">
-              <Recycle className="h-5 w-5" />
-            </Link>
-          </div>
-        </header>}
-
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[310px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]">
-          <aside className={cn("flex min-h-0 flex-col border-r border-border/70 bg-white/55", activeFriend && "hidden lg:flex")}>
-            <div className="px-5 pb-3 pt-5">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h1 className="text-xl font-bold tracking-tight">Messages</h1>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Connect with your EcoRewards friends</p>
+    <main className={cn(styles.page, "h-[100dvh] w-full overflow-hidden bg-white text-[#080809]")}>
+      <section className={cn(styles.frame, "flex h-full min-h-0 w-full flex-col overflow-hidden bg-white")}>
+        <div className={cn(styles.layout, "grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[310px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]")}>
+          <aside className={cn(styles.sidebar, "flex min-h-0 flex-col border-r border-border/70 bg-white", activeFriend && "hidden lg:flex")}>
+            <div className={cn(styles.sidebarHeader, "px-5 pb-3 pt-5")}>
+              <div className={cn(styles.sidebarHeading, "mb-4 flex items-center justify-between")}>
+                <h1 className="text-xl font-bold tracking-tight">Chats</h1>
+                <div className={cn(styles.sidebarActions, "flex items-center gap-2")}>
+                  <Link href="/resident" aria-label="Return to resident dashboard" title="Back to dashboard" className={styles.actionButton}>
+                    <Recycle className="h-5 w-5" />
+                  </Link>
+                  {onPickupMessages && (
+                    <button type="button" aria-label="Open pickup support messages" title="Pickup support messages" onClick={onPickupMessages} className={styles.actionButton}>
+                      <MapPin className="h-5 w-5" />
+                    </button>
+                  )}
+                  <button type="button" aria-label="Scan a friend QR code" title="Scan a friend QR code" onClick={() => { setTransferMode(false); setScannerError(null); setScannerOpen(true); }} className={styles.actionButton}>
+                    <QrCode className="h-5 w-5" />
+                  </button>
+                  <button type="button" aria-label="New message: browse friends" title="New message" onClick={() => { setTab("friends"); setActiveFriendId(null); setActiveConversationId(null); setDetails(null); }} className={styles.actionButton}>
+                    <MessageSquarePlus className="h-5 w-5" />
+                  </button>
                 </div>
-                <button type="button" title="Scan a friend QR code" onClick={() => { setTransferMode(false); setScannerError(null); setScannerOpen(true); }} className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary transition hover:bg-primary/15">
-                  <QrCode className="h-5 w-5" />
-                </button>
               </div>
-              <label className="flex h-11 items-center gap-2.5 rounded-xl border border-border/70 bg-background/80 px-3 text-muted-foreground focus-within:border-primary/40">
+              <label className={cn(styles.search, "flex h-11 items-center gap-2.5 rounded-xl border border-border/70 bg-background/80 px-3 text-muted-foreground focus-within:border-primary/40")}>
                 <Search className="h-4 w-4 shrink-0" />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={tab === "directory" ? "Find a resident" : tab === "friends" ? "Search friends" : "Search conversations"} className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/70" />
-                <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={tab === "directory" ? "Find a resident" : tab === "friends" ? "Search friends" : "Search Messenger"} className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/70" />
               </label>
             </div>
 
-            <nav className="grid grid-cols-6 gap-1 px-3 pb-3 sm:px-4" aria-label="Messenger sections">
+            <nav className={cn(styles.sectionNav, "grid grid-cols-6 gap-1 px-3 pb-3 sm:px-4")} aria-label="Messenger sections">
               {([
                 ["inbox", "Inbox", MessageCircle],
                 ["friends", "Friends", Users],
@@ -1207,15 +1207,14 @@ export function ResidentMessenger({
                 ["groups", "Groups", Users],
                 ["profile", "My QR", QrCode],
               ] as const).map(([key, label, Icon]) => (
-                <button key={key} type="button" onClick={() => { setTab(key); setActiveFriendId(null); setActiveConversationId(null); setDetails(null); setProfile(null); if (key === "groups") setActiveGroupId(null); }} className={cn("flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[9px] font-semibold transition sm:text-[10px]", tab === key ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
+                <button key={key} type="button" aria-label={label} title={label} onClick={() => { setTab(key); setActiveFriendId(null); setActiveConversationId(null); setDetails(null); setProfile(null); if (key === "groups") setActiveGroupId(null); }} className={cn(styles.sectionButton, tab === key && styles.activeSection, "relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[9px] font-semibold transition sm:text-[10px]", tab !== key && "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
                   <Icon className="h-4 w-4" />
-                  <span className="max-w-full truncate">{label}</span>
                   {key === "requests" && (data?.incomingRequests.length ?? 0) > 0 && <span className="absolute ml-7 -mt-7 h-2 w-2 rounded-full bg-secondary" />}
                 </button>
               ))}
             </nav>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+            <div className={cn(styles.conversationList, "min-h-0 flex-1 overflow-y-auto px-3 pb-4")}>
               {loading ? (
                 <div className="space-y-3 px-2 pt-3" aria-label="Loading messages">
                   {[1, 2, 3, 4].map((item) => <div key={item} className="h-[72px] animate-pulse rounded-2xl bg-muted/70" />)}
@@ -1228,15 +1227,16 @@ export function ResidentMessenger({
                       setActiveConversationId(item.id);
                       setDetails(item.id ? getCachedMessengerData<ConversationDetails>(`messenger-conversation:${residentId}:${item.id}`) : null);
                       setSettingsOpen(false);
-                    }} className={cn("flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-muted/60", activeConversationId === item.id && "bg-primary/8")}>
+                    }} className={cn(styles.conversationRow, "flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-muted/60", activeConversationId === item.id && styles.selectedConversation)}>
                       <span className="relative shrink-0">
                         <ProfileAvatar resident={item.friend} />
+                        {item.friend.online && <span className={styles.onlineIndicator} aria-label="Online" title="Online" />}
                         {item.unread && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-primary" aria-label="Unread message" />}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center justify-between gap-2">
                           <span className={cn("truncate text-sm", item.unread ? "font-extrabold text-foreground" : "font-semibold")}>{displayName(item.friend)}</span>
-                          <span className={cn("shrink-0 text-[10px]", item.unread ? "font-bold text-primary" : "text-muted-foreground")}>{item.lastMessage ? dateFormatter.format(new Date(item.lastMessage.createdAt)) : ""}</span>
+                          <span className={cn(styles.timestamp, "shrink-0 text-[10px]", item.unread ? "font-bold text-primary" : "text-muted-foreground")}>{item.lastMessage ? relativeTime(item.lastMessage.createdAt) : ""}</span>
                         </span>
                         <span className={cn("mt-1 block truncate text-xs", item.unread ? "font-bold text-foreground" : "text-muted-foreground")}>{item.lastMessage ? getMessagePreview(item.lastMessage.content, item.lastMessage.mediaUrl, item.lastMessage.mediaType) : "Start a conversation"}</span>
                       </span>
@@ -1244,9 +1244,9 @@ export function ResidentMessenger({
                   ))}
                   {filteredGroupInbox.length > 0 && <p className="px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Group chats</p>}
                   {filteredGroupInbox.map((group) => (
-                    <button key={group.id} type="button" onClick={() => { setActiveGroupId(group.id); setTab("groups"); }} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-muted/60">
+                    <button key={group.id} type="button" onClick={() => { setActiveGroupId(group.id); setTab("groups"); }} className={cn(styles.conversationRow, "flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-muted/60")}>
                       <span className="relative shrink-0"><Avatar className="h-12 w-12 border-2 border-white/80 shadow-sm"><AvatarImage src={group.imageUrl ?? undefined} alt={group.name} /><AvatarFallback><Users className="h-4 w-4" /></AvatarFallback></Avatar>{group.unread && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-primary" aria-label="Unread group message" />}</span>
-                      <span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className={cn("truncate text-sm", group.unread ? "font-extrabold text-foreground" : "font-semibold")}>{group.name}</span><span className="shrink-0 text-[10px] text-muted-foreground">{group.lastMessage ? dateFormatter.format(new Date(group.lastMessage.createdAt)) : ""}</span></span><span className={cn("mt-1 block truncate text-xs", group.unread ? "font-bold text-foreground" : "text-muted-foreground")}>{group.lastMessage?.content.startsWith("ERGROUPQR:") ? "Shared a resident QR code" : group.lastMessage?.content || (group.lastMessage?.mediaType?.startsWith("video/") ? "Shared a video" : group.lastMessage?.mediaUrl ? "Shared a photo" : "Start your group conversation")}</span></span>
+                      <span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className={cn("truncate text-sm", group.unread ? "font-extrabold text-foreground" : "font-semibold")}>{group.name}</span><span className={cn(styles.timestamp, "shrink-0 text-[10px] text-muted-foreground")}>{group.lastMessage ? relativeTime(group.lastMessage.createdAt) : ""}</span></span><span className={cn("mt-1 block truncate text-xs", group.unread ? "font-bold text-foreground" : "text-muted-foreground")}>{group.lastMessage?.content.startsWith("ERGROUPQR:") ? "Shared a resident QR code" : group.lastMessage?.content || (group.lastMessage?.mediaType?.startsWith("video/") ? "Shared a video" : group.lastMessage?.mediaUrl ? "Shared a photo" : "Start your group conversation")}</span></span>
                     </button>
                   ))}
                   {!filteredConversations.length && !filteredGroupInbox.length && <EmptyList icon={<MessageCircle />} title="Your inbox is ready" text="Open a friend or group chat to start chatting." action="Browse friends" onAction={() => setTab("friends")} />}
@@ -1335,30 +1335,30 @@ export function ResidentMessenger({
             </div>
           </aside>
 
-          <section className={cn("relative flex min-w-0 flex-col", activeFriend ? "h-full min-h-0" : "h-full min-h-0 lg:flex", !activeFriend && "hidden")}>
+          <section className={cn(styles.conversation, "relative flex min-w-0 flex-col", activeFriend ? "h-full min-h-0" : "h-full min-h-0 lg:flex", !activeFriend && "hidden")}>
             {activeFriend ? (
               <>
-                <header className="flex min-h-[78px] items-center justify-between border-b border-border/70 px-4 sm:px-7">
+                <header className={cn(styles.conversationHeader, "flex min-h-[78px] items-center justify-between border-b border-border/70 px-4 sm:px-7")}>
                   <div className="flex min-w-0 items-center gap-3">
-                    <button type="button" aria-label="Back to conversations" onClick={() => { setActiveFriendId(null); setActiveConversationId(null); setDetails(null); }} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>
+                    <button type="button" aria-label="Back to conversations" onClick={() => { setActiveFriendId(null); setActiveConversationId(null); setDetails(null); }} className={cn(styles.backButton, "flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted")}><ArrowLeft className="h-4 w-4" /></button>
                     <ProfileAvatar resident={activeFriend} size="h-11 w-11" />
-                    <div className="min-w-0"><p className="truncate text-sm font-bold">{displayName(activeFriend)}</p><p className={cn("mt-0.5 text-xs", currentDetails?.friend.online ? "text-primary" : "text-muted-foreground")}>{currentDetails?.friend.online ? "Online" : "Offline"}</p></div>
+                    <div className="min-w-0"><p className="truncate text-sm font-bold">{displayName(activeFriend)}</p><p className={cn(styles.presence, currentDetails?.friend.online ? styles.onlinePresence : styles.offlinePresence, "mt-0.5 text-xs")}>{currentDetails?.friend.online ? "Active now" : "Offline"}</p></div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className={cn(styles.headerActions, "flex items-center gap-1")}>
                     {onPickupMessages && (
                       <button
                         type="button"
                         title="Pickup support messages"
                         aria-label="Open pickup support messages"
                         onClick={onPickupMessages}
-                        className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"
+                        className={cn(styles.pickupHeaderAction, "flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10")}
                       >
                         <MapPin className="h-5 w-5" />
                       </button>
                     )}
-                    <button type="button" title="Share your QR code" aria-label="Share your QR code" onClick={() => setShareQrOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Wallet className="h-5 w-5" /></button>
-                    <button type="button" title="Conversation appearance" onClick={() => setThemeOpen((open) => !open)} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><Settings2 className="h-5 w-5" /></button>
-                    <button type="button" title="Conversation settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen((open) => !open); setThemeOpen(false); }} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-primary"><MoreHorizontal className="h-5 w-5" /></button>
+                    <button type="button" title="Share your QR code" aria-label="Share your QR code" onClick={() => setShareQrOpen(true)} className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition")}><Wallet className="h-5 w-5" /></button>
+                    <button type="button" title="Conversation appearance" aria-label="Conversation appearance" onClick={() => setThemeOpen((open) => !open)} className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition")}><Settings2 className="h-5 w-5" /></button>
+                    <button type="button" title="Conversation settings" aria-label="Conversation settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen((open) => !open); setThemeOpen(false); }} className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition")}><MoreHorizontal className="h-5 w-5" /></button>
                   </div>
                 </header>
 
@@ -1370,8 +1370,8 @@ export function ResidentMessenger({
                   const viewport = event.currentTarget;
                   shouldAutoScrollRef.current =
                     viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 120;
-                }} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-8" style={{ background: currentTheme.background, ...(currentDetails?.backgroundImageUrl ? { backgroundImage: `linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,.72)), url("${currentDetails.backgroundImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" } : {}) }}>
-                  <div className="mx-auto mb-5 max-w-sm text-center"><span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm"><MessageCircle className="h-3 w-3" />Your EcoRewards connection</span><p className="mt-2 text-xs text-muted-foreground">Messages are private between friends.</p></div>
+                }} className={cn(styles.history, "relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-8")} style={{ background: currentDetails?.theme && currentDetails.theme !== "forest" ? currentTheme.background : "#fff", ...(currentDetails?.backgroundImageUrl ? { backgroundImage: `linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,.72)), url("${currentDetails.backgroundImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" } : {}) }}>
+                  <div className={styles.conversationIntro}><span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm"><MessageCircle className="h-3 w-3" />Your EcoRewards connection</span><p className="mt-2 text-xs text-muted-foreground">Messages are private between friends.</p></div>
                   {currentDetails?.messages.map((message) => {
                     const mine = message.senderId === residentId;
                     const sharedQrCode = getSharedResidentQrCode(message.content);
@@ -1391,6 +1391,7 @@ export function ResidentMessenger({
                       <div
                         key={message.id}
                         className={cn(
+                          styles.messageRow,
                           "group mb-4 flex w-full flex-col",
                           message.systemMessage ? "items-center" : mine ? "items-end" : "items-start",
                         )}
@@ -1438,6 +1439,7 @@ export function ResidentMessenger({
                           aria-label={editMessageId === message.id ? undefined : "Press to react to this message"}
                           title={editMessageId === message.id ? undefined : "Tap or hold to react"}
                           className={cn(
+                            styles.messageBubble,
                             "relative rounded-2xl shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                             editMessageId === message.id
                               ? "w-full max-w-[min(96%,760px)] border border-primary/20 bg-white p-4 text-foreground shadow-lg sm:p-5"
@@ -1445,9 +1447,9 @@ export function ResidentMessenger({
                             editMessageId !== message.id && message.systemMessage
                               ? "w-full border border-emerald-200/80 bg-white/85 text-foreground shadow-[0_8px_30px_rgba(25,80,54,0.08)]"
                               : editMessageId !== message.id && mine
-                                ? "rounded-br-md bg-primary text-white"
+                                ? cn(styles.outgoingBubble, "rounded-br-md bg-primary text-white")
                                 : editMessageId !== message.id && !message.systemMessage
-                                  ? "rounded-bl-md border-0 bg-white/90 text-foreground"
+                                  ? cn(styles.incomingBubble, "rounded-bl-md border-0 bg-white/90 text-foreground")
                                   : "",
                           )}>
                           {message.systemMessage && (
@@ -1627,7 +1629,7 @@ export function ResidentMessenger({
                   <div ref={messageEndRef} />
                 </div>
 
-                <form onSubmit={(event) => void sendMessage(event)} className="flex flex-col gap-2 border-t border-border/70 bg-white/90 px-3 py-3 sm:px-6">
+                <form onSubmit={(event) => void sendMessage(event)} className={cn(styles.composer, "flex flex-col gap-2 border-t border-border/70 bg-white px-3 py-3 sm:px-6")}>
                   {attachmentFile && <div className="flex items-center gap-2 rounded-xl bg-primary/5 px-3 py-2 text-xs"><span className="min-w-0 flex-1 truncate">{attachmentFile.name} · {(attachmentFile.size / (1024 * 1024)).toFixed(1)} MB</span><button type="button" aria-label="Remove attachment" onClick={() => setAttachmentFile(null)} className="rounded-full p-1 hover:bg-primary/10"><X className="h-3.5 w-3.5" /></button></div>}
                   <div className="flex items-end gap-2 sm:gap-3">
                     <input ref={mediaInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" className="sr-only" onChange={(event) => {
@@ -1640,10 +1642,9 @@ export function ResidentMessenger({
                       setAttachmentFile(file);
                       setError(null);
                     }} />
-                    <button type="button" title="Attach an image or video" aria-label="Attach an image or video" onClick={() => mediaInputRef.current?.click()} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary transition hover:bg-primary/10"><Paperclip className="h-5 w-5" /></button>
-                    <button type="button" title="Choose a shared conversation theme" onClick={() => setThemeOpen((open) => !open)} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary hover:bg-primary/10"><ImagePlus className="h-5 w-5" /></button>
-                    <textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={1} placeholder={`Message ${displayName(activeFriend)}…`} className="max-h-28 min-h-11 flex-1 resize-y rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/10" />
-                    <Button type="submit" size="icon" className="mb-0.5 h-10 w-10 shrink-0 rounded-full" disabled={(!messageText.trim() && !attachmentFile) || sendingMessage} aria-label="Send message"><Send className="h-4 w-4" /></Button>
+                    <button type="button" title="Attach an image or video" aria-label="Attach an image or video" onClick={() => mediaInputRef.current?.click()} className={cn(styles.attachmentButton, "mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition")}><Plus className="h-5 w-5" /></button>
+                    <textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={1} placeholder="Aa" aria-label={`Message ${displayName(activeFriend)}`} className={cn(styles.messageInput, "max-h-28 min-h-11 flex-1 resize-y rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/10")} />
+                    <Button type="submit" size="icon" className={cn(styles.sendButton, "mb-0.5 h-10 w-10 shrink-0 rounded-full")} disabled={(!messageText.trim() && !attachmentFile) || sendingMessage} aria-label="Send message"><Send className="h-4 w-4" /></Button>
                   </div>
                 </form>
               </>
