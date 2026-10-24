@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { forgotPasswordSchema } from "@/lib/validators/auth";
 import { APP_NAME } from "@/lib/constants";
@@ -15,6 +15,7 @@ const GENERIC_MESSAGE =
   "If an account matches and has a registered mobile number, a verification code has been sent.";
 
 export async function POST(request: Request) {
+  let stage = "configuration";
   try {
     if (!isSmsRecoveryConfigured()) {
       return NextResponse.json(
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
       );
     }
 
+    stage = "validation";
     const body = await request.json();
     const parsed = forgotPasswordSchema.safeParse(body);
 
@@ -39,6 +41,7 @@ export async function POST(request: Request) {
     const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60_000);
     const oneHourAgo = new Date(now.getTime() - 60 * 60_000);
 
+    stage = "account_lookup";
     const matches = await db.user.findMany({
       where: {
         deletedAt: null,
@@ -60,9 +63,20 @@ export async function POST(request: Request) {
         : null;
     const phone = user ? storedPhone : null;
     const code = createRecoveryCode();
+    stage = "challenge_creation";
     const challengeResult = await db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`sms-recovery:client:${clientHash}`}))`;
-      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`sms-recovery:identifier:${identifierHash}`}))`;
+      await tx.$queryRaw<{ locked: number }[]>`
+        WITH acquired AS MATERIALIZED (
+          SELECT pg_advisory_xact_lock(hashtext(${`sms-recovery:client:${clientHash}`}))
+        )
+        SELECT 1 AS locked FROM acquired
+      `;
+      await tx.$queryRaw<{ locked: number }[]>`
+        WITH acquired AS MATERIALIZED (
+          SELECT pg_advisory_xact_lock(hashtext(${`sms-recovery:identifier:${identifierHash}`}))
+        )
+        SELECT 1 AS locked FROM acquired
+      `;
 
       const [recentIdentifierRequests, recentClientRequests, latestRequest] = await Promise.all([
         tx.smsRecoveryChallenge.count({
@@ -82,7 +96,7 @@ export async function POST(request: Request) {
         recentClientRequests >= 15 ||
         (latestRequest && now.getTime() - latestRequest.createdAt.getTime() < 60_000)
       ) {
-        return { challengeId: latestRequest?.id ?? randomUUID(), challenge: null };
+        return { challengeId: latestRequest?.id ?? randomUUID(), challenge: null, throttled: true };
       }
 
       await tx.smsRecoveryChallenge.updateMany({
@@ -102,11 +116,18 @@ export async function POST(request: Request) {
         },
         select: { id: true },
       });
-      return { challengeId: challenge.id, challenge };
+      return { challengeId: challenge.id, challenge, throttled: false };
     });
 
-    after(async () => {
-      if (!user || !phone || !challengeResult.challenge) return;
+    if (challengeResult.throttled) {
+      return NextResponse.json(
+        { error: "Please wait before requesting another recovery code." },
+        { status: 429 },
+      );
+    }
+
+    if (user && phone && challengeResult.challenge) {
+      stage = "sms_delivery";
       try {
         await sendRecoverySms(
           phone,
@@ -117,19 +138,24 @@ export async function POST(request: Request) {
           where: { id: challengeResult.challenge.id },
           data: { consumedAt: new Date() },
         });
-        console.error("[sms-recovery:send]", error);
+        throw error;
       }
-    });
+    }
 
     return NextResponse.json({
       message: GENERIC_MESSAGE,
       challengeId: challengeResult.challengeId,
     });
   } catch (error) {
-    console.error("[forgot-password]", error);
+    const errorCode =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : undefined;
+    const errorName = error instanceof Error ? error.name : "UnknownError";
+    console.error("[forgot-password]", { stage, errorName, errorCode });
     return NextResponse.json(
       { error: "Unable to process the recovery request. Please try again later." },
-      { status: 500 }
+      { status: stage === "sms_delivery" ? 503 : 500 },
     );
   }
 }
