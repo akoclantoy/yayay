@@ -128,9 +128,15 @@ export function useResidentCalling(residentId: string) {
     peerRef.current = peer;
     stream.getTracks().forEach((track) => peer.addTrack(track, stream));
     peer.ontrack = (event) => {
-      const streamFromPeer = event.streams[0] ?? new MediaStream([event.track]);
-      remoteStreamRef.current = streamFromPeer;
-      setRemoteStream(streamFromPeer);
+      let incomingStream = remoteStreamRef.current;
+      if (!incomingStream) {
+        incomingStream = new MediaStream();
+        remoteStreamRef.current = incomingStream;
+      }
+      if (!incomingStream.getTracks().some((track) => track.id === event.track.id)) {
+        incomingStream.addTrack(event.track);
+      }
+      setRemoteStream(incomingStream);
     };
     peer.onicecandidate = (event) => {
       if (!event.candidate) return;
@@ -159,9 +165,9 @@ export function useResidentCalling(residentId: string) {
 
   const applySignal = useCallback(async (callId: string, signal: CallSignal) => {
     if (handledSignalsRef.current.has(signal.id)) return;
-    handledSignalsRef.current.add(signal.id);
     const peer = peerRef.current;
     if (!peer) return;
+    handledSignalsRef.current.add(signal.id);
 
     try {
       if (signal.kind === "OFFER" && signal.payload.type === "offer" && typeof signal.payload.sdp === "string") {
@@ -465,23 +471,31 @@ export function ResidentCallOverlay({
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const [seconds, setSeconds] = useState(0);
+  const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
   const incoming = call?.status === "RINGING" && !localStream;
   const active = call?.status === "ACCEPTED";
   const finished = call && ["DECLINED", "MISSED", "ENDED"].includes(call.status);
+  const showVideo = call?.kind === "VIDEO" && active;
 
   useEffect(() => {
-    if (call?.kind === "VIDEO") {
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
-      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
-    } else {
-      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStream;
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    const audioElement = remoteAudioRef.current;
+    const videoElement = remoteVideoRef.current;
+    if (audioElement) {
+      audioElement.srcObject = remoteStream;
+      if (remoteStream && active) {
+        void audioElement.play()
+          .then(() => setAudioPlaybackBlocked(false))
+          .catch(() => setAudioPlaybackBlocked(true));
+      }
     }
-  }, [call?.kind, remoteStream]);
+    if (videoElement) {
+      videoElement.srcObject = showVideo ? remoteStream : null;
+    }
+  }, [active, remoteStream, showVideo]);
 
   useEffect(() => {
     if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
-  }, [localStream]);
+  }, [localStream, showVideo]);
 
   useEffect(() => {
     if (!active) {
@@ -504,7 +518,16 @@ export function ResidentCallOverlay({
 
   const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
   const remainder = (seconds % 60).toString().padStart(2, "0");
-  const showVideo = call.kind === "VIDEO" && active;
+  const enableCallAudio = async () => {
+    const audioElement = remoteAudioRef.current;
+    if (!audioElement) return;
+    try {
+      await audioElement.play();
+      setAudioPlaybackBlocked(false);
+    } catch {
+      setAudioPlaybackBlocked(true);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-md sm:p-6" role="dialog" aria-modal="true" aria-label={`${call.kind === "VIDEO" ? "Video" : "Audio"} call with ${displayName(call.peer.name)}`}>
@@ -512,7 +535,7 @@ export function ResidentCallOverlay({
         {showVideo ? (
           <div className="relative flex min-h-0 flex-1 items-center justify-center bg-[#090c12]">
             {remoteStream ? (
-              <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" aria-label={`${displayName(call.peer.name)} video`} />
+              <video ref={remoteVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" aria-label={`${displayName(call.peer.name)} video`} />
             ) : (
               <div className="flex flex-col items-center gap-4 text-center">
                 <span className="flex h-28 w-28 items-center justify-center rounded-full bg-white/10 text-3xl font-semibold text-white/80">
@@ -522,7 +545,7 @@ export function ResidentCallOverlay({
               </div>
             )}
             <video ref={localVideoRef} autoPlay muted playsInline className="absolute bottom-5 right-5 aspect-video w-28 rounded-2xl border border-white/20 bg-black object-cover shadow-xl sm:w-44" aria-label="Your camera preview" />
-            <audio ref={remoteAudioRef} autoPlay className="hidden" />
+            <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
             <div className="absolute left-5 top-5 rounded-full bg-black/40 px-4 py-2 text-sm font-medium backdrop-blur">{displayName(call.peer.name)} <span className="ml-2 text-white/70">{active ? `${minutes}:${remainder}` : callPhase}</span></div>
           </div>
         ) : (
@@ -541,8 +564,15 @@ export function ResidentCallOverlay({
             {call.kind === "VIDEO" && active && localStream && (
               <video ref={localVideoRef} autoPlay muted playsInline className="mt-5 aspect-video w-full max-w-xs rounded-2xl bg-black object-cover" aria-label="Your camera preview" />
             )}
-            <audio ref={remoteAudioRef} autoPlay className="hidden" />
+            <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
             <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
+          </div>
+        )}
+
+        {active && audioPlaybackBlocked && (
+          <div className="mx-5 mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2.5 text-left text-xs leading-5 text-amber-100" role="status">
+            <span>Tap to enable call audio on this device.</span>
+            <button type="button" onClick={() => void enableCallAudio()} className="shrink-0 font-semibold text-white underline underline-offset-2">Enable audio</button>
           </div>
         )}
 
