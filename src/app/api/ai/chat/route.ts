@@ -1,5 +1,5 @@
 import { APP_NAME } from "@/lib/constants";
-import { requireSession } from "@/lib/api-auth";
+import { auth } from "@/auth";
 import {
   generateWithChatModelFallback,
   getGeminiClient,
@@ -21,8 +21,7 @@ Help residents with:
 Be friendly, concise, and practical. Use metric units (kg). If unsure, suggest visiting a collection center or contacting barangay staff.`;
 
 export async function POST(request: Request) {
-  const authResult = await requireSession();
-  if ("error" in authResult) return authResult.error;
+  await auth();
 
   try {
     const { messages } = await request.json();

@@ -7,8 +7,10 @@ import { findUserWithPhone } from "@/lib/phone";
 
 const schema = z.object({
   name: z.string().min(2).optional(),
-  phone: z.string().trim().min(8, "Enter a valid phone number").max(24)
-    .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number"),
+  phone: z.string().trim().max(24)
+    .refine((phone) => !phone || /^\+?[0-9\s().-]+$/.test(phone), "Enter a valid phone number")
+    .refine((phone) => !phone || (phone.replace(/\D/g, "").length >= 8 && phone.replace(/\D/g, "").length <= 15), "Enter a valid phone number")
+    .optional(),
   address: z.string().optional(),
   houseNumber: z.string().optional(),
   barangayId: z.string().optional(),
@@ -22,11 +24,13 @@ export async function PATCH(request: Request) {
     const data = schema.parse(await request.json());
     const userId = authResult.session.user.id;
     const barangayId = data.barangayId || null;
-    const phone = normalizePhilippinePhone(data.phone);
-    if (!phone) {
+    const phone = data.phone?.trim()
+      ? normalizePhilippinePhone(data.phone)
+      : null;
+    if (data.phone?.trim() && !phone) {
       return NextResponse.json({ error: "Enter a valid phone number." }, { status: 400 });
     }
-    if (await findUserWithPhone(phone, userId)) {
+    if (phone && await findUserWithPhone(phone, userId)) {
       return NextResponse.json(
         { error: "That phone number is already associated with another account." },
         { status: 409 },
@@ -49,7 +53,7 @@ export async function PATCH(request: Request) {
     }
 
     await db.$transaction(async (tx) => {
-      if (data.name || phone) {
+      if (data.name || data.phone !== undefined) {
         await tx.user.update({
           where: { id: userId },
           data: {

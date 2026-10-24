@@ -38,10 +38,10 @@ describe("SMS recovery security helpers", () => {
     assert.equal(normalizePhilippinePhone(null), null);
   });
 
-  it("requires a valid phone for sign-in, registration, staff creation, and recovery", () => {
+  it("requires email and password for sign-in, but only requires phone for recovery", () => {
     const phone = "+63 917 123 4567";
-    assert.equal(loginSchema.safeParse({ phone, password: "password123" }).success, true);
-    assert.equal(loginSchema.safeParse({ phone: "", password: "password123" }).success, false);
+    assert.equal(loginSchema.safeParse({ email: "resident@example.com", password: "password123" }).success, true);
+    assert.equal(loginSchema.safeParse({ email: "", password: "password123" }).success, false);
     const registration = {
       name: "Resident",
       email: "resident@example.com",
@@ -49,7 +49,7 @@ describe("SMS recovery security helpers", () => {
       confirmPassword: "Password123",
     };
     assert.equal(registerSchema.safeParse({ ...registration, phone }).success, true);
-    assert.equal(registerSchema.safeParse(registration).success, false);
+    assert.equal(registerSchema.safeParse(registration).success, true);
     const staff = {
       name: "Staff Member",
       email: "staff@example.com",
@@ -57,7 +57,7 @@ describe("SMS recovery security helpers", () => {
       confirmPassword: "Password123",
     };
     assert.equal(createStaffSchema.safeParse({ ...staff, phone }).success, true);
-    assert.equal(createStaffSchema.safeParse(staff).success, false);
+    assert.equal(createStaffSchema.safeParse(staff).success, true);
     assert.equal(forgotPasswordSchema.safeParse({ identifier: "resident@example.com", phone }).success, true);
     assert.equal(forgotPasswordSchema.safeParse({ identifier: "ab", phone }).success, false);
     assert.equal(forgotPasswordSchema.safeParse({ identifier: "resident@example.com" }).success, false);

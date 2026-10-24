@@ -81,7 +81,7 @@ export default function RegisterPage() {
 
       if (json.autoVerified) {
         const signInResult = await signIn("credentials", {
-          phone: data.phone,
+          email: data.email.trim().toLowerCase(),
           password: data.password,
           redirect: false,
         });
@@ -149,10 +149,10 @@ export default function RegisterPage() {
           )}
         </div>
         <div className="space-y-2">
-          <Label htmlFor="phone">Phone number</Label>
-          <Input id="phone" type="tel" autoComplete="tel" placeholder="+63 912 345 6789" required {...register("phone")} />
+          <Label htmlFor="phone">Phone number (optional)</Label>
+          <Input id="phone" type="tel" autoComplete="tel" placeholder="+63 912 345 6789" {...register("phone")} />
           {errors.phone && <p className="text-sm text-danger">{errors.phone.message}</p>}
-          <p className="text-xs text-muted-foreground">Use a number that can receive SMS for account recovery.</p>
+          <p className="text-xs text-muted-foreground">Add a number to use SMS account recovery.</p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>

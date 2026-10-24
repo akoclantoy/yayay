@@ -1,11 +1,16 @@
 import { z } from "zod";
 
 export const loginSchema = z.object({
-  phone: z.string().trim().min(8, "Enter your registered phone number").max(24)
-    .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number")
-    .refine((phone) => phone.replace(/\D/g, "").length >= 8 && phone.replace(/\D/g, "").length <= 15, "Enter a valid phone number"),
+  email: z.string().trim().email("Enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
+
+const optionalPhoneSchema = z.union([
+  z.string().trim().max(24)
+    .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number")
+    .refine((phone) => phone.replace(/\D/g, "").length >= 8 && phone.replace(/\D/g, "").length <= 15, "Enter a valid phone number"),
+  z.literal(""),
+]).optional();
 
 export const registerSchema = z
   .object({
@@ -17,9 +22,7 @@ export const registerSchema = z
       .regex(/[A-Z]/, "Include at least one uppercase letter")
       .regex(/[0-9]/, "Include at least one number"),
     confirmPassword: z.string(),
-    phone: z.string().trim().min(8, "Enter a valid phone number").max(24)
-      .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number")
-      .refine((phone) => phone.replace(/\D/g, "").length >= 8 && phone.replace(/\D/g, "").length <= 15, "Enter a valid phone number"),
+    phone: optionalPhoneSchema,
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
@@ -35,9 +38,7 @@ export const createStaffSchema = z
       .min(8, "Password must be at least 8 characters")
       .regex(/[A-Z]/, "Include at least one uppercase letter")
       .regex(/[0-9]/, "Include at least one number"),
-    phone: z.string().trim().min(8, "Enter a valid phone number").max(24)
-      .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number")
-      .refine((phone) => phone.replace(/\D/g, "").length >= 8 && phone.replace(/\D/g, "").length <= 15, "Enter a valid phone number"),
+    phone: optionalPhoneSchema,
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {

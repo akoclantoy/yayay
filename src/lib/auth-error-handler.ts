@@ -49,7 +49,7 @@ export function handleAuthError(error: unknown): AuthError {
     return {
       type: "CredentialsSignin",
       message: "Invalid credentials",
-      userFriendlyMessage: "Invalid phone number or password. Please check your credentials and try again.",
+      userFriendlyMessage: "Invalid email or password. Please check your credentials and try again.",
       originalError: error,
     };
   }
@@ -79,7 +79,7 @@ export function handleAuthError(error: unknown): AuthError {
         return {
           type: "CredentialsSignin",
           message: "Invalid credentials",
-          userFriendlyMessage: "Invalid phone number or password. Please check your credentials and try again.",
+          userFriendlyMessage: "Invalid email or password. Please check your credentials and try again.",
           originalError: error,
         };
 
@@ -297,7 +297,7 @@ export function handleLoginError(error: unknown): string {
   // Return concise message for inline display
   switch (authError.type) {
     case "CredentialsSignin":
-      return "Invalid phone number or password";
+      return "Invalid email or password";
     case "EmailNotVerified":
       return "Please verify your email";
     case "AccountInactive":

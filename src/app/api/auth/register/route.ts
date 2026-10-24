@@ -31,8 +31,10 @@ export async function POST(request: Request) {
 
     const { name, email, password, phone } = parsed.data;
     const normalizedEmail = email.toLowerCase();
-    const normalizedPhone = normalizePhilippinePhone(phone);
-    if (!normalizedPhone) {
+    const normalizedPhone = phone?.trim()
+      ? normalizePhilippinePhone(phone)
+      : null;
+    if (phone?.trim() && !normalizedPhone) {
       return NextResponse.json(
         { error: { phone: ["Enter a valid phone number that can receive SMS."] } },
         { status: 400 },
@@ -40,20 +42,20 @@ export async function POST(request: Request) {
     }
     const smtpConfigured = isSmtpConfigured();
 
+    if (normalizedPhone && await findUserWithPhone(normalizedPhone)) {
+      return NextResponse.json(
+        { error: { phone: ["An account with this phone number already exists."] } },
+        { status: 409 },
+      );
+    }
+
     if (process.env.NODE_ENV !== "production" && shouldUseMockAuth()) {
-      const mockResult = mockRegisterUser({ name, email: normalizedEmail, password, phone: normalizedPhone });
+      const mockResult = mockRegisterUser({ name, email: normalizedEmail, password, phone: normalizedPhone ?? undefined });
 
       if (!mockResult.success) {
         return NextResponse.json(
           { error: { email: [mockResult.error] } },
           { status: 409 }
-        );
-      }
-
-      if (await findUserWithPhone(normalizedPhone)) {
-        return NextResponse.json(
-          { error: { phone: ["An account with this phone number already exists."] } },
-          { status: 409 },
         );
       }
 

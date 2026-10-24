@@ -22,8 +22,10 @@ export async function POST(request: Request) {
 
     const { name, email, password } = parsed.data;
     const normalizedEmail = email.toLowerCase();
-    const normalizedPhone = normalizePhilippinePhone(parsed.data.phone);
-    if (!normalizedPhone) {
+    const normalizedPhone = parsed.data.phone?.trim()
+      ? normalizePhilippinePhone(parsed.data.phone)
+      : null;
+    if (parsed.data.phone?.trim() && !normalizedPhone) {
       return NextResponse.json(
         { error: { phone: ["Enter a valid phone number that can receive SMS."] } },
         { status: 400 },
@@ -41,7 +43,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (await findUserWithPhone(normalizedPhone)) {
+    if (normalizedPhone && await findUserWithPhone(normalizedPhone)) {
       return NextResponse.json(
         { error: { phone: ["An account with this phone number already exists."] } },
         { status: 409 },

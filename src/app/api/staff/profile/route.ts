@@ -7,8 +7,10 @@ import { findUserWithPhone } from "@/lib/phone";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
-  phone: z.string().trim().min(8, "Enter a valid phone number").max(24)
-    .regex(/^\+?[0-9\s().-]+$/, "Enter a valid phone number"),
+  phone: z.string().trim().max(24)
+    .refine((phone) => !phone || /^\+?[0-9\s().-]+$/.test(phone), "Enter a valid phone number")
+    .refine((phone) => !phone || (phone.replace(/\D/g, "").length >= 8 && phone.replace(/\D/g, "").length <= 15), "Enter a valid phone number")
+    .optional(),
 });
 
 export async function PATCH(request: Request) {
@@ -35,11 +37,13 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const phone = normalizePhilippinePhone(parsed.data.phone);
-    if (!phone) {
+    const phone = parsed.data.phone?.trim()
+      ? normalizePhilippinePhone(parsed.data.phone)
+      : null;
+    if (parsed.data.phone?.trim() && !phone) {
       return NextResponse.json({ error: "Enter a valid phone number." }, { status: 400 });
     }
-    if (await findUserWithPhone(phone, authResult.session.user.id)) {
+    if (phone && await findUserWithPhone(phone, authResult.session.user.id)) {
       return NextResponse.json(
         { error: { phone: ["That phone number is already associated with another account."] } },
         { status: 409 },

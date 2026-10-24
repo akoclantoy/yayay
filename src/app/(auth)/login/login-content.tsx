@@ -32,7 +32,7 @@ export default function LoginPage() {
   async function onSubmit(data: LoginInput) {
     try {
       const result = await signIn("credentials", {
-        phone: data.phone,
+        email: data.email.trim().toLowerCase(),
         password: data.password,
         redirect: false,
       });
@@ -43,7 +43,7 @@ export default function LoginPage() {
         // Add specific guidance for database errors
         if (errorToast.title === "Database Connection Error") {
           toast.error(errorToast.title, {
-            description: `${errorToast.message} For demo purposes, use the phone registered on the account.`,
+            description: errorToast.message,
           });
         } else {
           toast.error(errorToast.title, {
@@ -74,7 +74,7 @@ export default function LoginPage() {
       // Add specific guidance for database errors
       if (errorToast.title === "Database Connection Error") {
         toast.error(errorToast.title, {
-          description: `${errorToast.message} For demo purposes, use the phone registered on the account.`,
+          description: errorToast.message,
         });
       } else {
         toast.error(errorToast.title, {
@@ -101,21 +101,21 @@ export default function LoginPage() {
   return (
     <AuthLayout
       title="Welcome back"
-      subtitle="Sign in with your registered phone number and password"
+      subtitle="Sign in with your email and password"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="phone">Phone number</Label>
+          <Label htmlFor="email">Email</Label>
           <Input
-            id="phone"
-            type="tel"
-            placeholder="+63 912 345 6789"
-            autoComplete="tel"
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+            autoComplete="email"
             required
-            {...register("phone")}
+            {...register("email")}
           />
-          {errors.phone && (
-            <p className="text-sm text-danger">{errors.phone.message}</p>
+          {errors.email && (
+            <p className="text-sm text-danger">{errors.email.message}</p>
           )}
         </div>
         <div className="space-y-2">

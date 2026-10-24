@@ -78,13 +78,12 @@ export function CreateStaffForm() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="staff-phone">Phone number</Label>
+            <Label htmlFor="staff-phone">Phone number (optional)</Label>
             <Input
               id="staff-phone"
               type="tel"
               autoComplete="tel"
               placeholder="+63 912 345 6789"
-              required
               value={form.phone}
               onChange={(event) => setForm({ ...form, phone: event.target.value })}
             />

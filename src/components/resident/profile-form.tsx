@@ -206,7 +206,7 @@ export function ProfileForm({
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Phone number</Label>
-              <Input id="phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} autoComplete="tel" required />
+              <Input id="phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} autoComplete="tel" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="barangay">Barangay</Label>

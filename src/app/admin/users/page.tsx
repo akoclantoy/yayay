@@ -112,8 +112,8 @@ export default async function AdminUsersPage() {
             <CardTitle className="text-base">Demo login accounts</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-1">
-            <p>Sign in with each account&apos;s registered phone number and password.</p>
-            <p>Seeded admin/staff accounts need a phone number assigned in the database before they can sign in.</p>
+            <p>Sign in with each account&apos;s email address and password.</p>
+            <p>Phone numbers are used only to verify SMS account recovery.</p>
           </CardContent>
         </Card>
       </div>
