@@ -74,6 +74,30 @@ enum DirectMessageReactionKind {
   ANGRY
 }
 
+enum MessengerTheme {
+  LIGHT
+  DARK
+}
+
+enum ResidentCallKind {
+  AUDIO
+  VIDEO
+}
+
+enum ResidentCallStatus {
+  RINGING
+  ACCEPTED
+  DECLINED
+  MISSED
+  ENDED
+}
+
+enum ResidentCallSignalKind {
+  OFFER
+  ANSWER
+  ICE
+}
+
 enum NotificationChannel {
   IN_APP
   EMAIL
@@ -88,30 +112,31 @@ enum AnnouncementPriority {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  passwordHash  String?
-  image         String?
-  role          UserRole  @default(RESIDENT)
-  phone         String?
-  isActive      Boolean   @default(true)
-  lastSeenAt    DateTime?
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String         @id @default(cuid())
+  name           String?
+  email          String         @unique
+  emailVerified  DateTime?
+  passwordHash   String?
+  image          String?
+  role           UserRole       @default(RESIDENT)
+  phone          String?
+  messengerTheme MessengerTheme @default(LIGHT)
+  isActive       Boolean        @default(true)
+  lastSeenAt     DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   accounts                Account[]
   sessions                Session[]
   residentProfile         ResidentProfile?
   staffProfile            StaffProfile?
   notifications           Notification[]
-  auditLogs               AuditLog[]               @relation("AuditActor")
-  recyclingRecords        RecyclingRecord[]        @relation("RecordedBy")
-  verifiedRecycling       RecyclingRecord[]        @relation("VerifiedBy")
+  auditLogs               AuditLog[]                @relation("AuditActor")
+  recyclingRecords        RecyclingRecord[]         @relation("RecordedBy")
+  verifiedRecycling       RecyclingRecord[]         @relation("VerifiedBy")
   pickupRequests          PickupRequest[]
-  assignedPickups         PickupRequest[]          @relation("AssignedStaff")
+  assignedPickups         PickupRequest[]           @relation("AssignedStaff")
   redemptionRequests      RedemptionRequest[]
   rewardTransactions      RewardTransaction[]
   userBadges              UserBadge[]
@@ -120,11 +145,11 @@ model User {
   passwordResetTokens     PasswordResetToken[]
   smsRecoveryChallenges   SmsRecoveryChallenge[]
   emailVerificationTokens EmailVerificationToken[]
-  createdAnnouncements    Announcement[]           @relation("AnnouncementAuthor")
-  createdNews             News[]                   @relation("NewsAuthor")
-  residentConversations   Conversation[]           @relation("ConversationResident")
-  staffConversations      Conversation[]           @relation("ConversationStaff")
-  sentMessages            ConversationMessage[]    @relation("MessageSender")
+  createdAnnouncements    Announcement[]            @relation("AnnouncementAuthor")
+  createdNews             News[]                    @relation("NewsAuthor")
+  residentConversations   Conversation[]            @relation("ConversationResident")
+  staffConversations      Conversation[]            @relation("ConversationStaff")
+  sentMessages            ConversationMessage[]     @relation("MessageSender")
   friendRequestsSent      FriendRequest[]           @relation("FriendRequestSender")
   friendRequestsReceived  FriendRequest[]           @relation("FriendRequestRecipient")
   friendshipsLow          Friendship[]              @relation("FriendshipLow")
@@ -133,8 +158,11 @@ model User {
   directConversationsHigh DirectConversation[]      @relation("DirectConversationHigh")
   directMessages          DirectMessage[]
   directMessageReactions  DirectMessageReaction[]
+  callsStarted            ResidentCallSession[]     @relation("ResidentCallCaller")
+  callsReceived           ResidentCallSession[]     @relation("ResidentCallCallee")
+  callSignalsSent         ResidentCallSignal[]
   groupMemberships        GroupConversationMember[]
-  createdGroupChats       GroupConversation[]    @relation("GroupChatCreator")
+  createdGroupChats       GroupConversation[]       @relation("GroupChatCreator")
   groupMessages           GroupMessage[]
   groupMessageReactions   GroupMessageReaction[]
   sentPointTransfers      PointTransfer[]           @relation("PointTransferSender")
@@ -199,19 +227,19 @@ model PasswordResetToken {
 }
 
 model SmsRecoveryChallenge {
-  id              String    @id @default(cuid())
-  userId          String?
-  identifierHash  String
-  clientHash      String
-  codeHash        String
-  expiresAt       DateTime
-  attempts        Int       @default(0)
-  verifiedAt      DateTime?
-  resetTokenHash  String?
-  resetExpiresAt  DateTime?
-  consumedAt      DateTime?
-  createdAt       DateTime  @default(now())
-  user            User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  userId         String?
+  identifierHash String
+  clientHash     String
+  codeHash       String
+  expiresAt      DateTime
+  attempts       Int       @default(0)
+  verifiedAt     DateTime?
+  resetTokenHash String?
+  resetExpiresAt DateTime?
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([identifierHash, createdAt])
   @@index([clientHash, createdAt])
@@ -498,12 +526,12 @@ model ConversationMessage {
 }
 
 model FriendRequest {
-  id          String             @id @default(cuid())
+  id          String              @id @default(cuid())
   senderId    String
   recipientId String
   status      FriendRequestStatus @default(PENDING)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
   sender    User @relation("FriendRequestSender", fields: [senderId], references: [id], onDelete: Cascade)
   recipient User @relation("FriendRequestRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
@@ -514,10 +542,10 @@ model FriendRequest {
 }
 
 model Friendship {
-  id          String   @id @default(cuid())
-  userLowId   String
-  userHighId  String
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  userLowId  String
+  userHighId String
+  createdAt  DateTime @default(now())
 
   userLow  User @relation("FriendshipLow", fields: [userLowId], references: [id], onDelete: Cascade)
   userHigh User @relation("FriendshipHigh", fields: [userHighId], references: [id], onDelete: Cascade)
@@ -528,21 +556,22 @@ model Friendship {
 }
 
 model DirectConversation {
-  id                String    @id @default(cuid())
-  participantLowId  String
-  participantHighId String
-  theme             String    @default("forest")
-  backgroundImageUrl String?  @db.Text
-  lastReadAtLow     DateTime?
-  lastReadAtHigh    DateTime?
-  hiddenAtLow       DateTime?
-  hiddenAtHigh      DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  participantLowId   String
+  participantHighId  String
+  theme              String    @default("forest")
+  backgroundImageUrl String?   @db.Text
+  lastReadAtLow      DateTime?
+  lastReadAtHigh     DateTime?
+  hiddenAtLow        DateTime?
+  hiddenAtHigh       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  participantLow  User            @relation("DirectConversationLow", fields: [participantLowId], references: [id], onDelete: Cascade)
-  participantHigh User            @relation("DirectConversationHigh", fields: [participantHighId], references: [id], onDelete: Cascade)
+  participantLow  User                  @relation("DirectConversationLow", fields: [participantLowId], references: [id], onDelete: Cascade)
+  participantHigh User                  @relation("DirectConversationHigh", fields: [participantHighId], references: [id], onDelete: Cascade)
   messages        DirectMessage[]
+  callSessions    ResidentCallSession[]
 
   @@unique([participantLowId, participantHighId])
   @@index([participantLowId, updatedAt])
@@ -552,18 +581,18 @@ model DirectConversation {
 }
 
 model GroupConversation {
-  id             String   @id @default(cuid())
-  name           String
-  imageUrl       String?  @db.Text
-  imagePublicId  String?
-  theme          String   @default("forest")
-  themeImageUrl  String?  @db.Text
+  id                 String   @id @default(cuid())
+  name               String
+  imageUrl           String?  @db.Text
+  imagePublicId      String?
+  theme              String   @default("forest")
+  themeImageUrl      String?  @db.Text
   themeImagePublicId String?
-  createdById    String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdById        String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  createdBy User                       @relation("GroupChatCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy User                      @relation("GroupChatCreator", fields: [createdById], references: [id], onDelete: Cascade)
   members   GroupConversationMember[]
   messages  GroupMessage[]
 
@@ -572,13 +601,13 @@ model GroupConversation {
 }
 
 model GroupConversationMember {
-  id             String    @id @default(cuid())
-  groupId        String
-  userId         String
-  nickname       String?
-  isAdmin        Boolean   @default(false)
-  lastReadAt     DateTime?
-  joinedAt       DateTime  @default(now())
+  id         String    @id @default(cuid())
+  groupId    String
+  userId     String
+  nickname   String?
+  isAdmin    Boolean   @default(false)
+  lastReadAt DateTime?
+  joinedAt   DateTime  @default(now())
 
   group GroupConversation @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -588,18 +617,18 @@ model GroupConversationMember {
 }
 
 model GroupMessage {
-  id        String    @id @default(cuid())
-  groupId   String
-  senderId  String
-  content   String    @db.Text
-  mediaUrl  String?   @db.Text
-  mediaType String?
+  id            String    @id @default(cuid())
+  groupId       String
+  senderId      String
+  content       String    @db.Text
+  mediaUrl      String?   @db.Text
+  mediaType     String?
   mediaPublicId String?
-  createdAt DateTime  @default(now())
-  deletedAt DateTime?
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
 
-  group     GroupConversation       @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  sender    User                    @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  group     GroupConversation      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender    User                   @relation(fields: [senderId], references: [id], onDelete: Cascade)
   reactions GroupMessageReaction[]
 
   @@index([groupId, createdAt])
@@ -622,20 +651,20 @@ model GroupMessageReaction {
 }
 
 model DirectMessage {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   conversationId String
   senderId       String
-  content        String   @db.Text
-  mediaUrl       String?  @db.Text
+  content        String    @db.Text
+  mediaUrl       String?   @db.Text
   mediaType      String?
   mediaPublicId  String?
-  systemMessage  Boolean  @default(false)
+  systemMessage  Boolean   @default(false)
   editedAt       DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
   deletedAt      DateTime?
 
-  conversation DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User               @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  conversation DirectConversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User                    @relation(fields: [senderId], references: [id], onDelete: Cascade)
   reactions    DirectMessageReaction[]
 
   @@index([conversationId, createdAt])
@@ -655,6 +684,43 @@ model DirectMessageReaction {
   @@unique([messageId, userId])
   @@index([messageId])
   @@index([userId])
+}
+
+model ResidentCallSession {
+  id             String             @id @default(cuid())
+  conversationId String
+  callerId       String
+  calleeId       String
+  kind           ResidentCallKind
+  status         ResidentCallStatus @default(RINGING)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  expiresAt      DateTime
+
+  conversation DirectConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  caller       User                 @relation("ResidentCallCaller", fields: [callerId], references: [id], onDelete: Cascade)
+  callee       User                 @relation("ResidentCallCallee", fields: [calleeId], references: [id], onDelete: Cascade)
+  signals      ResidentCallSignal[]
+
+  @@index([calleeId, status, createdAt])
+  @@index([callerId, status, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([expiresAt])
+}
+
+model ResidentCallSignal {
+  id        String                 @id @default(cuid())
+  callId    String
+  senderId  String
+  kind      ResidentCallSignalKind
+  payload   String                 @db.Text
+  createdAt DateTime               @default(now())
+
+  call   ResidentCallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
+  sender User                @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([callId, createdAt])
+  @@index([senderId, createdAt])
 }
 
 model PointTransfer {

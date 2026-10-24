@@ -5,6 +5,7 @@ import QRCode from "react-qr-code";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
+  Camera,
   Check,
   CheckCheck,
   Forward,
@@ -12,16 +13,19 @@ import {
   MessageCircle,
   MapPin,
   MoreHorizontal,
+  Moon,
   Ban,
   MessageSquarePlus,
   Plus,
   Pencil,
+  Phone,
   Trash2,
   UserRoundX,
   Recycle,
   Search,
   Send,
   Settings2,
+  Sun,
   UserPlus,
   Users,
   Wallet,
@@ -36,6 +40,7 @@ import { GroupChatPanel } from "@/components/messaging/group-chat-panel";
 import { ResidentQrShareDialog } from "@/components/messaging/resident-qr-share-dialog";
 import { MessageMedia } from "@/components/messaging/message-media";
 import { PickupMessenger } from "@/components/messaging/pickup-messenger";
+import { ResidentCallOverlay, useResidentCalling } from "@/components/messaging/resident-calling";
 import { cn } from "@/lib/utils";
 import { subscribeToRealtimeChanges } from "@/lib/realtime-client";
 import { getSharedResidentQrCode } from "@/lib/resident-social";
@@ -219,6 +224,7 @@ export function ResidentMessenger({
   onPickupMessages?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("inbox");
+  const [messengerTheme, setMessengerTheme] = useState<"LIGHT" | "DARK">("LIGHT");
   const [data, setData] = useState<MessengerData | null>(null);
   const [directoryResidents, setDirectoryResidents] = useState<DirectoryResident[]>([]);
   const [directoryPage, setDirectoryPage] = useState(0);
@@ -258,6 +264,7 @@ export function ResidentMessenger({
   const [settingsAction, setSettingsAction] = useState<"unfriend" | "block" | "delete" | null>(null);
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
   const [friendCelebration, setFriendCelebration] = useState<Resident | null>(null);
+  const calling = useResidentCalling(residentId);
   const messageEndRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -265,6 +272,39 @@ export function ResidentMessenger({
   const longPressTimerRef = useRef<number | null>(null);
   const suppressNextMessageClickRef = useRef(false);
   const conversationRefreshInFlightRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    let active = true;
+    void requestJson<{ theme: "LIGHT" | "DARK" }>("/api/resident/messenger-preferences")
+      .then((result) => {
+        if (active) setMessengerTheme(result.theme);
+      })
+      .catch((cause: unknown) => {
+        if (active) setError(getErrorMessage(cause));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function toggleMessengerTheme() {
+    const nextTheme = messengerTheme === "DARK" ? "LIGHT" : "DARK";
+    setWorking(true);
+    setError(null);
+    try {
+      const result = await requestJson<{ theme: "LIGHT" | "DARK" }>("/api/resident/messenger-preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: nextTheme }),
+      });
+      setMessengerTheme(result.theme);
+      setNotice(`${result.theme === "DARK" ? "Dark" : "Light"} mode saved to your account.`);
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setWorking(false);
+    }
+  }
 
   useEffect(() => () => {
     if (longPressTimerRef.current !== null) {
@@ -1226,7 +1266,7 @@ export function ResidentMessenger({
   const currentTheme = THEMES[currentDetails?.theme ?? "forest"] ?? THEMES.forest;
 
   return (
-    <main className={cn(styles.page, "h-[100dvh] w-full overflow-hidden bg-white text-[#080809]")}>
+    <main className={cn(styles.page, messengerTheme === "DARK" && styles.darkMode, "h-[100dvh] w-full overflow-hidden bg-white text-[#080809]")}>
       <section className={cn(styles.frame, "flex h-full min-h-0 w-full flex-col overflow-hidden bg-white")}>
         <div className={cn(styles.layout, "grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[310px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]")}>
           <aside className={cn(styles.sidebar, "flex min-h-0 flex-col border-r border-border/70 bg-white", activeFriend && "hidden lg:flex")}>
@@ -1234,6 +1274,9 @@ export function ResidentMessenger({
               <div className={cn(styles.sidebarHeading, "mb-4 flex items-center justify-between")}>
                 <h1 className="text-xl font-bold tracking-tight">Chats</h1>
                 <div className={cn(styles.sidebarActions, "flex items-center gap-2")}>
+                  <button type="button" aria-label={`Switch to ${messengerTheme === "DARK" ? "light" : "dark"} mode`} title={`Switch to ${messengerTheme === "DARK" ? "light" : "dark"} mode`} disabled={working} onClick={() => void toggleMessengerTheme()} className={styles.actionButton}>
+                    {messengerTheme === "DARK" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                  </button>
                   <Link href="/resident" aria-label="Return to resident dashboard" title="Back to dashboard" className={styles.actionButton}>
                     <Recycle className="h-5 w-5" />
                   </Link>
@@ -1437,6 +1480,30 @@ export function ResidentMessenger({
                         <MapPin className="h-5 w-5" />
                       </button>
                     )}
+                    <button
+                      type="button"
+                      title="Start an audio call"
+                      aria-label={`Start an audio call with ${displayName(activeFriend)}`}
+                      disabled={!activeConversationId || calling.startingCall || Boolean(calling.call)}
+                      onClick={() => {
+                        if (activeConversationId) void calling.startCall(activeConversationId, "AUDIO");
+                      }}
+                      className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-40")}
+                    >
+                      <Phone className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      title="Start a video call"
+                      aria-label={`Start a video call with ${displayName(activeFriend)}`}
+                      disabled={!activeConversationId || calling.startingCall || Boolean(calling.call)}
+                      onClick={() => {
+                        if (activeConversationId) void calling.startCall(activeConversationId, "VIDEO");
+                      }}
+                      className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-40")}
+                    >
+                      <Camera className="h-5 w-5" />
+                    </button>
                     <button type="button" title="Share your QR code" aria-label="Share your QR code" onClick={() => setShareQrOpen(true)} className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition")}><QrCode className="h-5 w-5" /></button>
                     <button type="button" title="Conversation appearance" aria-label="Conversation appearance" onClick={() => setThemeOpen((open) => !open)} className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition")}><Settings2 className="h-5 w-5" /></button>
                     <button type="button" title="Conversation settings" aria-label="Conversation settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen((open) => !open); setThemeOpen(false); }} className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition")}><MoreHorizontal className="h-5 w-5" /></button>
@@ -1788,6 +1855,23 @@ export function ResidentMessenger({
       {profile && <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-labelledby="resident-profile-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className="flex justify-end"><button type="button" aria-label="Close profile" onClick={() => { setProfile(null); setTransferMode(false); setTransferConfirm(false); }} className="text-muted-foreground"><X className="h-5 w-5" /></button></div><div className="flex flex-col items-center text-center"><ProfileAvatar resident={profile} size="h-20 w-20" /><h2 id="resident-profile-title" className="mt-3 text-lg font-bold">{displayName(profile)}</h2><p className="text-xs text-muted-foreground">{profile.isFriend ? "Your EcoRewards friend" : "Resident profile"}</p></div>{profile.mutualFriends.length > 0 && <div className="mt-5 rounded-2xl bg-muted/50 p-3"><p className="mb-2 text-xs font-semibold text-muted-foreground">Mutual friends · {profile.mutualFriends.length}</p><div className="flex flex-wrap gap-2">{profile.mutualFriends.map((friend) => <span key={friend.id} title={displayName(friend)}><ProfileAvatar resident={friend} size="h-8 w-8" /></span>)}</div></div>}{transferMode && profile.isFriend ? transferConfirm ? <div className="mt-5 space-y-4"><div className="rounded-2xl bg-primary/5 p-4 text-center"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Review points transfer</p><p className="mt-2 text-3xl font-bold text-primary">{Number(transferAmount).toLocaleString("en-US")} pts</p><p className="mt-1 text-sm text-muted-foreground">To {displayName(profile)}</p></div><p className="text-center text-xs leading-5 text-muted-foreground">This transfer cannot be undone. Please confirm the recipient and amount.</p><Button type="button" className="w-full" disabled={working} onClick={() => void confirmTransfer()}><Wallet className="h-4 w-4" />{working ? "Sending..." : "Confirm and send points"}</Button><Button type="button" variant="outline" className="w-full" disabled={working} onClick={() => setTransferConfirm(false)}>Go back</Button></div> : <form onSubmit={(event) => void submitTransfer(event)} className="mt-5 space-y-3"><div className="rounded-xl bg-primary/5 p-3 text-sm"><span className="text-muted-foreground">Your balance</span><strong className="float-right text-primary">{transferBalance.toLocaleString("en-US")} pts</strong></div><label className="block text-left text-xs font-medium">Points to send<input type="number" min="1" max="10000" step="1" required value={transferAmount} onChange={(event) => { setTransferAmount(event.target.value); setTransferConfirm(false); }} className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-primary/50" placeholder="Maximum 10,000" /></label><p className="text-xs text-muted-foreground">No fee. Up to 10,000 points per transfer.</p><Button type="submit" className="w-full" disabled={working || !transferAmount || Number(transferAmount) > transferBalance}><Wallet className="h-4 w-4" />Continue to review</Button></form> : <div className="mt-5 space-y-2">{profile.incomingRequest ? <Button className="w-full" disabled={working} onClick={() => void updateRequest(profile.incomingRequest!, "ACCEPT")}><Check className="h-4 w-4" />Accept friend request</Button> : profile.isFriend ? <><Button className="w-full" onClick={() => { const friend = data?.friends.find((item) => item.id === profile.id); if (friend) openFriend(friend); setProfile(null); }}><MessageCircle className="h-4 w-4" />Message friend</Button><Button variant="outline" className="w-full" onClick={() => { setTransferMode(true); setTransferConfirm(false); void loadTransferBalance(); }}><Wallet className="h-4 w-4" />Transfer points</Button></> : profile.outgoingRequest ? <Button variant="secondary" className="w-full" disabled={working} onClick={() => void cancelRequest(profile.outgoingRequest!)}><X className="h-4 w-4" />Cancel friend request</Button> : <Button className="w-full" disabled={working} onClick={() => void sendFriendRequest()}><UserPlus className="h-4 w-4" />Send friend request</Button>}</div>}</div></div>}
 
       {settingsAction && activeFriend && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="conversation-action-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className={cn("mx-auto flex h-12 w-12 items-center justify-center rounded-2xl", settingsAction === "delete" ? "bg-danger/10 text-danger" : "bg-primary/10 text-primary")}>{settingsAction === "block" ? <Ban className="h-5 w-5" /> : settingsAction === "delete" ? <Trash2 className="h-5 w-5" /> : <UserRoundX className="h-5 w-5" />}</div><h2 id="conversation-action-title" className="mt-4 text-center text-lg font-bold">{settingsAction === "unfriend" ? "Unfriend this resident?" : settingsAction === "block" ? "Block this resident?" : "Delete this conversation?"}</h2><p className="mt-2 text-center text-sm leading-6 text-muted-foreground">{settingsAction === "unfriend" ? `${displayName(activeFriend)} will be removed from your friends. You can reconnect later by sending a new friend request.` : settingsAction === "block" ? `${displayName(activeFriend)} will be removed from your friends and hidden from your directory. Neither of you can view the other's profile or send messages.` : "This removes the conversation from your inbox. It does not delete the other resident's copy."}</p><div className="mt-6 flex gap-3"><Button type="button" variant="secondary" className="flex-1" disabled={working} onClick={() => setSettingsAction(null)}>Keep</Button><Button type="button" variant={settingsAction === "unfriend" ? "default" : "destructive"} className="flex-1" disabled={working} onClick={() => void updateConversation(settingsAction)}>{working ? "Please wait..." : settingsAction === "unfriend" ? "Unfriend" : settingsAction === "block" ? "Block resident" : "Delete chat"}</Button></div></div></div>}
+
+      <ResidentCallOverlay
+        call={calling.call}
+        localStream={calling.localStream}
+        remoteStream={calling.remoteStream}
+        callError={calling.callError}
+        callPhase={calling.callPhase}
+        muted={calling.muted}
+        cameraEnabled={calling.cameraEnabled}
+        startingCall={calling.startingCall}
+        onAccept={() => void calling.acceptCall()}
+        onDecline={() => void calling.declineCall()}
+        onEnd={() => void calling.endCall()}
+        onToggleMicrophone={calling.toggleMicrophone}
+        onToggleCamera={calling.toggleCamera}
+        onClearError={calling.clearCallError}
+      />
 
       {loading && <span className="sr-only" aria-live="polite">Loading messenger</span>}
     </main>

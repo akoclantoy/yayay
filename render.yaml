@@ -23,6 +23,10 @@ services:
         generateValue: true
       - key: SMS_API_KEY
         sync: false
+      - key: TURN_SERVER_URL
+        sync: false
+      - key: TURN_SHARED_SECRET
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL

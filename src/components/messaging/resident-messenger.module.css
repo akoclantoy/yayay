@@ -315,6 +315,100 @@
   opacity: 1;
 }
 
+.darkMode {
+  --background: #0d1117;
+  --foreground: #e6edf3;
+  --card: #161b22;
+  --card-foreground: #e6edf3;
+  --primary: #79aaff;
+  --primary-foreground: #081a32;
+  --secondary: #2b3442;
+  --secondary-foreground: #e6edf3;
+  --accent: #2d405a;
+  --accent-foreground: #e6edf3;
+  --muted: #202733;
+  --muted-foreground: #9da7b3;
+  --border: #2a3442;
+  --input: #2a3442;
+  --ring: #79aaff;
+  color: #e6edf3;
+  background: #0d1117;
+}
+
+.darkMode .frame,
+.darkMode .sidebar,
+.darkMode .conversation {
+  color: #e6edf3;
+  background-color: #0d1117;
+}
+
+.darkMode .sidebar {
+  border-color: #28313d;
+}
+
+.darkMode .conversationHeader,
+.darkMode .composer {
+  color: #e6edf3;
+  background-color: #151b24;
+  border-color: #28313d;
+}
+
+.darkMode .history {
+  color: #e6edf3;
+  background: #0d1117 !important;
+}
+
+.darkMode .incomingBubble {
+  color: #e6edf3 !important;
+  background: #252d3a !important;
+}
+
+.darkMode .messageInput,
+.darkMode .search {
+  color: #e6edf3;
+  background-color: #222a36;
+}
+
+.darkMode .messageInput::placeholder,
+.darkMode .search input::placeholder {
+  color: #9da7b3;
+}
+
+.darkMode .selectedConversation,
+.darkMode .selectedConversation:hover {
+  background: #202a38 !important;
+}
+
+.darkMode .conversationRow:hover,
+.darkMode .sectionButton:hover,
+.darkMode .headerAction:hover,
+.darkMode .actionButton:hover {
+  background-color: #202a38;
+}
+
+.darkMode :global(.bg-white) {
+  background-color: #161c27 !important;
+}
+
+.darkMode :global(.bg-background) {
+  background-color: #0d1117 !important;
+}
+
+.darkMode :global(.text-foreground),
+.darkMode :global(.text-\[\#080809\]) {
+  color: #e6edf3 !important;
+}
+
+.darkMode :global(.text-muted-foreground) {
+  color: #9da7b3 !important;
+}
+
+.darkMode :global(.border-border),
+.darkMode :global(.border-border\/60),
+.darkMode :global(.border-border\/70) {
+  border-color: #2a3442 !important;
+}
+
 @media (min-width: 1024px) {
   .layout {
     grid-template-columns: minmax(280px, 32%) minmax(0, 1fr) !important;
