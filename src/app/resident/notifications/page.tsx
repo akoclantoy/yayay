@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
+import { ResidentPushSettings } from "@/components/resident/resident-push-settings";
 
 type Notification = {
   id: string;
@@ -62,6 +63,18 @@ export default function NotificationsPage() {
           </Button>
         )}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5" />
+            Device notifications
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResidentPushSettings />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { canonicalFriendshipPair } from "@/lib/resident-social";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 const requestSchema = z.object({
   qrCode: z.string().trim().min(1).max(200),
@@ -402,6 +403,14 @@ export async function POST(request: Request) {
           },
         });
       });
+      void sendPushToUsers(target.userId, {
+        title: "Your Friend Together",
+        body: `You and ${authResult.session.user.name ?? "a resident"} connected by QR code. Say hello in your messages!`,
+        url: `/resident/messages?friendId=${encodeURIComponent(userId)}`,
+        tag: `friend-connected-${userId}`,
+      }).catch((error: unknown) => {
+        console.error("[resident-friends] Failed to send QR connection alert:", error);
+      });
       return NextResponse.json({
         isFriend: true,
         connectedNow: true,
@@ -436,6 +445,14 @@ export async function POST(request: Request) {
         type: "friend_request",
         link: "/resident/messages",
       },
+    });
+    void sendPushToUsers(target.userId, {
+      title: "New friend request",
+      body: `${authResult.session.user.name ?? "A resident"} sent you a friend request.`,
+      url: "/resident/messages",
+      tag: `friend-request-${userId}`,
+    }).catch((error: unknown) => {
+      console.error("[resident-friends] Failed to send friend request alert:", error);
     });
     return NextResponse.json({ requestId: friendRequest.id }, { status: 201 });
   } catch (error) {
@@ -489,6 +506,14 @@ export async function PATCH(request: Request) {
           link: "/resident/messages",
         },
       });
+    });
+    void sendPushToUsers(friendRequest.senderId, {
+      title: "Friend request accepted",
+      body: `${authResult.session.user.name ?? "A resident"} accepted your friend request.`,
+      url: "/resident/messages",
+      tag: `friend-accepted-${userId}`,
+    }).catch((error: unknown) => {
+      console.error("[resident-friends] Failed to send acceptance alert:", error);
     });
 
     return NextResponse.json({ success: true });

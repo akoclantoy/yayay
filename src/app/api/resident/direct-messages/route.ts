@@ -10,6 +10,7 @@ import {
   getSharedResidentQrCode,
   hasUnreadMessage,
 } from "@/lib/resident-social";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 const messageSchema = z.object({
   action: z.enum(["message", "share_qr"]).optional(),
@@ -135,6 +136,7 @@ export async function GET(request: Request) {
             name: friend.name,
             image: friend.image,
             online: Boolean(friend.lastSeenAt && Date.now() - friend.lastSeenAt.getTime() <= 60_000),
+            lastSeenAt: friend.lastSeenAt?.toISOString() ?? null,
           },
           messages: conversation.messages,
           readAt: conversation.participantLowId === userId
@@ -212,6 +214,7 @@ export async function GET(request: Request) {
           name: friend.name,
           image: friend.image,
           online: Boolean(friend.lastSeenAt && Date.now() - friend.lastSeenAt.getTime() <= 60_000),
+          lastSeenAt: friend.lastSeenAt?.toISOString() ?? null,
         },
         lastMessage,
         unread: Boolean(lastMessage && hasUnreadMessage({
@@ -614,6 +617,17 @@ export async function POST(request: Request) {
         data: { updatedAt: new Date() },
       });
       return { conversation, message };
+    });
+    void sendPushToUsers(friendId, {
+      title: "New message",
+      body: (action === "share_qr"
+        ? "Your friend shared a resident QR code."
+        : messageContent || (uploadedMediaType?.startsWith("video/") ? "Your friend shared a video." : "Your friend shared a photo."))
+        .slice(0, 160),
+      url: "/resident/messages",
+      tag: `direct-message-${result.conversation.id}`,
+    }).catch((error: unknown) => {
+      console.error("[resident-direct-messages] Failed to send push alert:", error);
     });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

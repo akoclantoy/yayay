@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { getCloudinaryImageProxySrc } from "@/lib/cloudinary-image";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { formatDateTime, formatPoints } from "@/lib/utils";
+import { formatCurrency, formatDateTime, pointsToCurrency } from "@/lib/utils";
 import { parseGcashNotes } from "@/lib/gcash-redemption";
 
 type Redemption = {
@@ -49,7 +49,7 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
       <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 space-y-3 text-xs">
         <p className="font-medium text-foreground">GCash redemption request</p>
         <p className="font-semibold text-foreground">
-          Points requested: {formatPoints(redemption.points)} pts
+          GCash value: {formatCurrency(pointsToCurrency(redemption.points))}
         </p>
         <p>
           <span className="text-muted-foreground">GCash number:</span> {parsed.gcashNumber}
@@ -131,7 +131,7 @@ export function RedemptionManager({ initial }: { initial: Redemption[] }) {
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p>
-              {r.user.name ?? r.user.email} · {formatPoints(r.points)} pts
+              {r.user.name ?? r.user.email} · {formatCurrency(pointsToCurrency(r.points))}
             </p>
             {renderNotes(r)}
             <p className="text-xs text-muted-foreground">

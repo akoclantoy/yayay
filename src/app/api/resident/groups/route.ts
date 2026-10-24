@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { deleteImage, deleteVideo, uploadImage, uploadVideo } from "@/lib/cloudinary";
 import { db } from "@/lib/db";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 const createSchema = z.object({
   name: z.string().trim().min(2).max(60),
@@ -43,6 +44,26 @@ async function getMembership(groupId: string, userId: string) {
   return db.groupConversationMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
     select: { groupId: true, isAdmin: true },
+  });
+}
+
+async function notifyGroupMembers(groupId: string, senderId: string, content: string) {
+  const group = await db.groupConversation.findUnique({
+    where: { id: groupId },
+    select: {
+      name: true,
+      members: {
+        where: { userId: { not: senderId } },
+        select: { userId: true },
+      },
+    },
+  });
+  if (!group || group.members.length === 0) return;
+  await sendPushToUsers(group.members.map((member) => member.userId), {
+    title: `New message in ${group.name}`,
+    body: content.slice(0, 160) || "A member shared a photo or video.",
+    url: "/resident/messages",
+    tag: `group-message-${groupId}`,
   });
 }
 
@@ -191,6 +212,13 @@ export async function POST(request: Request) {
         });
         return created;
       });
+      void notifyGroupMembers(
+        input.groupId,
+        userId,
+        input.action === "share_qr" ? "A member shared a resident QR code." : messageContent,
+      ).catch((error: unknown) => {
+        console.error("[resident-groups] Failed to send group push alerts:", error);
+      });
       return NextResponse.json({ message }, { status: 201 });
     }
 
@@ -248,6 +276,10 @@ export async function POST(request: Request) {
           },
         });
         await db.groupConversation.update({ where: { id: input.groupId }, data: { updatedAt: created.createdAt } });
+        void notifyGroupMembers(input.groupId, userId, input.content ?? "A member shared a photo or video.")
+          .catch((error: unknown) => {
+            console.error("[resident-groups] Failed to send group push alerts:", error);
+          });
         return NextResponse.json({ message: created }, { status: 201 });
       }
       const created = await db.groupMessage.create({
@@ -263,6 +295,10 @@ export async function POST(request: Request) {
         },
       });
       await db.groupConversation.update({ where: { id: input.groupId }, data: { updatedAt: created.createdAt } });
+      void notifyGroupMembers(input.groupId, userId, input.content ?? "")
+        .catch((error: unknown) => {
+          console.error("[resident-groups] Failed to send group push alerts:", error);
+        });
       return NextResponse.json({ message: created }, { status: 201 });
     }
     const input = createSchema.parse({

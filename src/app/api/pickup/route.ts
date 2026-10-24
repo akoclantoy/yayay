@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { deliverDuePickupReminders } from "@/lib/pickup-reminders";
 import { isWithinTupi } from "@/lib/tupi";
+import { sendPushToUsers } from "@/lib/push-notifications";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -264,6 +265,14 @@ export async function PATCH(request: Request) {
         }
       }
       return pickup;
+    });
+    void sendPushToUsers(pickup.userId, {
+      title: "Pickup request updated",
+      body: `Your pickup request is now ${pickup.status.toLowerCase().replace("_", " ")}.`,
+      url: "/resident/pickup",
+      tag: `pickup-update-${pickup.id}`,
+    }).catch((error: unknown) => {
+      console.error("[pickup] Failed to send resident push alert:", error);
     });
 
     return NextResponse.json(pickup);

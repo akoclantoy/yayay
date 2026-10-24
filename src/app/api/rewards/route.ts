@@ -6,6 +6,7 @@ import { GCASH_REWARD_ID, getGcashRewardMetadata, sanitizeGcashNumber } from "@/
 import { z } from "zod";
 import { MIN_GCASH_REDEMPTION_POINTS, MIN_REDEMPTION_PHP } from "@/lib/constants";
 import { currencyToPoints } from "@/lib/utils";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 async function ensureWallet(userId: string) {
   const existing = await db.rewardWallet.findUnique({ where: { residentId: userId } });
@@ -368,6 +369,14 @@ export async function PATCH(request: Request) {
 
         return updatedRedemption;
       });
+      void sendPushToUsers(redemption.userId, {
+        title: "Redemption approved",
+        body: `Your redemption for "${redemption.reward.name}" was approved.`,
+        url: "/resident/rewards",
+        tag: `redemption-${redemption.id}`,
+      }).catch((error: unknown) => {
+        console.error("[rewards] Failed to send resident push alert:", error);
+      });
 
       return NextResponse.json(updated);
     }
@@ -390,6 +399,14 @@ export async function PATCH(request: Request) {
         type: "reward",
         link: "/resident/rewards",
       },
+    });
+    void sendPushToUsers(redemption.userId, {
+      title: "Redemption update",
+      body: `Your redemption for "${redemption.reward.name}" was ${status.toLowerCase()}.`,
+      url: "/resident/rewards",
+      tag: `redemption-${redemption.id}`,
+    }).catch((error: unknown) => {
+      console.error("[rewards] Failed to send resident push alert:", error);
     });
 
     return NextResponse.json(updated);

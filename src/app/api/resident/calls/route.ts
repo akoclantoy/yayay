@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { canonicalFriendshipPair } from "@/lib/resident-social";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 const signalSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -285,6 +286,15 @@ export async function POST(request: Request) {
           expiresAt: new Date(now.getTime() + RING_TIMEOUT_MS),
         },
         include: callInclude,
+      });
+      void sendPushToUsers(peerId, {
+        title: `Incoming ${input.kind === "VIDEO" ? "video" : "audio"} call`,
+        body: `${call.caller.name?.trim() || "A resident friend"} is calling you.`,
+        url: "/resident/messages",
+        tag: `resident-call-${call.id}`,
+        requireInteraction: true,
+      }).catch((error: unknown) => {
+        console.error("[resident-calls] Failed to send incoming call alert:", error);
       });
       return NextResponse.json({
         call: serializeCall(call, userId),

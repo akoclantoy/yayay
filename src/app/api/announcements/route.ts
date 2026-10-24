@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 const announcementSchema = z.object({
   title: z.string().trim().min(1).max(160),
@@ -50,6 +51,14 @@ export async function POST(request: Request) {
       }
 
       return created;
+    });
+    void sendPushToUsers(recipients.map((recipient) => recipient.id), {
+      title: input.title,
+      body: input.content.slice(0, 180),
+      url: "/resident/notifications",
+      tag: `announcement-${announcement.id}`,
+    }).catch((error: unknown) => {
+      console.error("[announcements] Failed to send resident push alerts:", error);
     });
 
     return NextResponse.json(

@@ -6,6 +6,7 @@ import {
   canonicalDirectConversationPair,
   canonicalFriendshipPair,
 } from "@/lib/resident-social";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 const transferSchema = z.object({
   recipientQrCode: z.string().trim().min(1).max(200),
@@ -166,6 +167,14 @@ export async function POST(request: Request) {
         balance: updatedSender.balance,
         conversationId,
       };
+    });
+    void sendPushToUsers(recipientId, {
+      title: "Points received",
+      body: `${authResult.session.user.name?.trim() || "A resident"} sent you ${amount.toLocaleString("en-US")} points.`,
+      url: "/resident/rewards",
+      tag: `points-transfer-${transfer.id}`,
+    }).catch((error: unknown) => {
+      console.error("[resident-points-transfer] Failed to send recipient push alert:", error);
     });
 
     return NextResponse.json({

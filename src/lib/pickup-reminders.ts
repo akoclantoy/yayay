@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 export async function deliverDuePickupReminders() {
   const now = new Date();
@@ -82,7 +83,17 @@ export async function deliverDuePickupReminders() {
       return true;
     });
 
-    if (sent) delivered += 1;
+    if (sent) {
+      delivered += 1;
+      void sendPushToUsers(pickup.userId, {
+        title: "Pickup time reached",
+        body: "Your pickup details are now available in Messenger.",
+        url: "/resident/messages",
+        tag: `pickup-reminder-${pickup.id}`,
+      }).catch((error: unknown) => {
+        console.error("[pickup-reminders] Failed to send resident push alert:", error);
+      });
+    }
   }
 
   return delivered;

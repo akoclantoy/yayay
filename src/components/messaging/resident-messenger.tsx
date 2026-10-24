@@ -47,7 +47,14 @@ import { getSharedResidentQrCode } from "@/lib/resident-social";
 import { getCachedMessengerData, loadCachedMessengerData, setCachedMessengerData } from "@/components/messaging/messenger-cache";
 import styles from "@/components/messaging/resident-messenger.module.css";
 
-type Resident = { id: string; name: string | null; image: string | null; qrCode?: string; online?: boolean };
+type Resident = {
+  id: string;
+  name: string | null;
+  image: string | null;
+  qrCode?: string;
+  online?: boolean;
+  lastSeenAt?: string | null;
+};
 type Friend = Resident & { createdAt?: string };
 type DirectoryResident = Resident & {
   qrCode: string;
@@ -1466,7 +1473,7 @@ export function ResidentMessenger({
                   <div className="flex min-w-0 items-center gap-3">
                     <button type="button" aria-label="Back to conversations" onClick={() => { setActiveFriendId(null); setActiveConversationId(null); setDetails(null); }} className={cn(styles.backButton, "flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted")}><ArrowLeft className="h-4 w-4" /></button>
                     <ProfileAvatar resident={activeFriend} size="h-11 w-11" />
-                    <div className="min-w-0"><p className="truncate text-sm font-bold">{displayName(activeFriend)}</p><p className={cn(styles.presence, currentDetails?.friend.online ? styles.onlinePresence : styles.offlinePresence, "mt-0.5 text-xs")}>{currentDetails?.friend.online ? "Active now" : "Offline"}</p></div>
+                    <div className="min-w-0"><p className="truncate text-sm font-bold">{displayName(activeFriend)}</p><p className={cn(styles.presence, currentDetails?.friend.online ? styles.onlinePresence : styles.offlinePresence, "mt-0.5 text-xs")}>{currentDetails?.friend.online ? "Active now" : currentDetails?.friend.lastSeenAt ? `Last active ${relativeTime(currentDetails.friend.lastSeenAt)}` : "Offline"}</p></div>
                   </div>
                   <div className={cn(styles.headerActions, "flex items-center gap-1")}>
                     {onPickupMessages && (

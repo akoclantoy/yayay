@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { syncWeightMilestoneBadges } from "@/lib/services/badges";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 export async function recordRecycling(input: {
   residentId: string;
@@ -110,6 +111,15 @@ export async function recordRecycling(input: {
     }
 
     return record;
+  });
+
+  void sendPushToUsers(input.residentId, {
+    title: "Points earned!",
+    body: `You earned ${pointsEarned} points for recycling ${input.weightKg}kg of ${category.name}.`,
+    url: "/resident/wallet",
+    tag: `recycling-points-${record.id}`,
+  }).catch((error: unknown) => {
+    console.error("[recycling] Failed to send resident push alert:", error);
   });
 
   try {

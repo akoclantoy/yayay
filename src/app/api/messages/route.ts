@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { deleteImage, uploadImage } from "@/lib/cloudinary";
 import { deliverDuePickupReminders } from "@/lib/pickup-reminders";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -189,6 +190,16 @@ export async function POST(request: Request) {
       }
       return message;
     });
+    if (recipientId && role !== "RESIDENT") {
+      void sendPushToUsers(recipientId, {
+        title: "New pickup message",
+        body: content?.slice(0, 160) ?? "You received a pickup photo.",
+        url: "/resident/messages",
+        tag: `pickup-message-${conversation.id}`,
+      }).catch((error: unknown) => {
+        console.error("[messages] Failed to send resident push alert:", error);
+      });
+    }
     return NextResponse.json(saved, { status: 201 });
   } catch (error) {
     if (uploaded) {
