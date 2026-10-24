@@ -101,9 +101,10 @@ type MessengerData = {
   friends: Friend[];
   incomingRequests: FriendRequest[];
   outgoingRequests: FriendRequest[];
+  blockedResidents: Resident[];
 };
 type MessengerBootstrap = { friends: MessengerData; conversations: Conversation[] };
-type Tab = "inbox" | "friends" | "requests" | "directory" | "groups" | "profile";
+type Tab = "inbox" | "friends" | "requests" | "directory" | "groups" | "blocked" | "profile";
 type ForwardGroup = { id: string; name: string; imageUrl: string | null };
 type GroupInboxItem = {
   id: string;
@@ -204,7 +205,8 @@ function isMessengerBootstrap(value: unknown): value is MessengerBootstrap {
   return Array.isArray(value.friends.friends) &&
     Array.isArray(value.friends.incomingRequests) &&
     Array.isArray(value.friends.outgoingRequests) &&
-    Array.isArray(value.conversations);
+  Array.isArray(value.friends.blockedResidents) &&
+  Array.isArray(value.conversations);
 }
 
 export function ResidentMessenger({
@@ -610,6 +612,12 @@ export function ResidentMessenger({
     const query = search.trim().toLocaleLowerCase();
     return (data?.friends ?? []).filter((friend) => displayName(friend).toLocaleLowerCase().includes(query));
   }, [data?.friends, search]);
+  const filteredBlockedResidents = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return (data?.blockedResidents ?? []).filter((resident) =>
+      displayName(resident).toLocaleLowerCase().includes(query),
+    );
+  }, [data?.blockedResidents, search]);
 
   async function updateRequest(
     requestId: string,
@@ -693,8 +701,33 @@ export function ResidentMessenger({
             : resident,
         ));
       }
+
       void refresh().catch((cause: unknown) => setError(getErrorMessage(cause)));
       setNotice("Friend request cancelled.");
+    } catch (cause) {
+      setError(getErrorMessage(cause));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function unblockResident(resident: Resident) {
+    setWorking(true);
+    setError(null);
+    try {
+      await requestJson("/api/resident/direct-messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "unblock", friendId: resident.id }),
+      });
+      setData((current) => current
+        ? {
+            ...current,
+            blockedResidents: current.blockedResidents.filter((item) => item.id !== resident.id),
+          }
+        : current);
+      await refresh();
+      setNotice(`${displayName(resident)} was unblocked. You may need to send a new friend request to message them.`);
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
@@ -1219,17 +1252,18 @@ export function ResidentMessenger({
               </div>
               <label className={cn(styles.search, "flex h-11 items-center gap-2.5 rounded-xl border border-border/70 bg-background/80 px-3 text-muted-foreground focus-within:border-primary/40")}>
                 <Search className="h-4 w-4 shrink-0" />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={tab === "directory" ? "Find a resident" : tab === "friends" ? "Search friends" : "Search Messenger"} className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/70" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={tab === "directory" ? "Find a resident" : tab === "friends" ? "Search friends" : tab === "blocked" ? "Search blocked residents" : "Search Messenger"} className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/70" />
               </label>
             </div>
 
-            <nav className={cn(styles.sectionNav, "grid grid-cols-6 gap-1 px-3 pb-3 sm:px-4")} aria-label="Messenger sections">
+            <nav className={cn(styles.sectionNav, "grid grid-cols-7 gap-1 px-3 pb-3 sm:px-4")} aria-label="Messenger sections">
               {([
                 ["inbox", "Inbox", MessageCircle],
                 ["friends", "Friends", Users],
                 ["requests", "Requests", UserPlus],
                 ["directory", "Find Friend", Search],
                 ["groups", "Groups", Users],
+                ["blocked", "Blocked", Ban],
                 ["profile", "My QR", QrCode],
               ] as const).map(([key, label, Icon]) => (
                 <button key={key} type="button" aria-label={label} title={label} onClick={() => { setTab(key); setActiveFriendId(null); setActiveConversationId(null); setDetails(null); setProfile(null); if (key === "groups") setActiveGroupId(null); }} className={cn(styles.sectionButton, tab === key && styles.activeSection, "relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[9px] font-semibold transition sm:text-[10px]", tab !== key && "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
@@ -1342,6 +1376,28 @@ export function ResidentMessenger({
                   ))}
                   {!directoryLoading && !directoryResidents.length && <EmptyList icon={<Search />} title="No residents found" text={search ? "Try another name or clear your search." : "Resident accounts will appear here once they are registered."} />}
                   {directoryHasMore && <Button variant="outline" className="w-full" disabled={directoryLoading} onClick={() => void loadMoreResidents()}>{directoryLoading ? "Loading..." : "Load more residents"}</Button>}
+                </div>
+              ) : tab === "blocked" ? (
+                <div className="space-y-2">
+                  <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-muted-foreground shadow-sm"><Ban className="h-5 w-5" /></span>
+                      <div><p className="text-sm font-bold">Blocked residents</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Only you can see this list. Unblocking does not automatically restore friendship.</p></div>
+                    </div>
+                  </div>
+                  {filteredBlockedResidents.map((resident) => (
+                    <div key={resident.id} className="flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-muted/50">
+                      <ProfileAvatar resident={resident} size="h-11 w-11" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{displayName(resident)}</p>
+                        <p className="text-xs text-muted-foreground">Blocked by you</p>
+                      </div>
+                      <Button type="button" size="sm" variant="outline" className="h-8 shrink-0" disabled={working} onClick={() => void unblockResident(resident)}>
+                        Unblock
+                      </Button>
+                    </div>
+                  ))}
+                  {!filteredBlockedResidents.length && <EmptyList icon={<Ban />} title={search ? "No matching residents" : "No blocked residents"} text={search ? "Try a different name." : "Residents you block will appear here."} />}
                 </div>
               ) : tab === "groups" ? (
                 <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/10 via-accent/10 to-secondary/10 p-4">

@@ -286,7 +286,13 @@ export async function GET(request: Request) {
       }),
       db.residentBlock.findMany({
         where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
-        select: { blockerId: true, blockedId: true },
+        select: {
+          blockerId: true,
+          blockedId: true,
+          blocked: {
+            select: { id: true, name: true, image: true, isActive: true, role: true },
+          },
+        },
       }),
     ]);
     const blockedIds = new Set(blocks.map((block) =>
@@ -313,6 +319,17 @@ export async function GET(request: Request) {
         createdAt: item.createdAt,
         resident: item.recipient,
       })),
+      blockedResidents: blocks
+        .filter((block) =>
+          block.blockerId === userId &&
+          block.blocked.isActive &&
+          block.blocked.role === "RESIDENT",
+        )
+        .map((block) => ({
+          id: block.blocked.id,
+          name: block.blocked.name,
+          image: block.blocked.image,
+        })),
     });
   } catch (error) {
     console.error("Failed to load resident friends", error);

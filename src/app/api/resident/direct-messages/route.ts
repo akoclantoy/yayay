@@ -32,6 +32,7 @@ const actionSchema = z.object({
     "delete",
     "unfriend",
     "block",
+    "unblock",
     "edit_message",
     "delete_message",
     "react",
@@ -426,6 +427,16 @@ export async function PATCH(request: Request) {
     });
     if (!target) return NextResponse.json({ error: "Resident unavailable" }, { status: 404 });
     const lowParticipant = conversation?.participantLowId === userId;
+
+    if (action === "unblock") {
+      const result = await db.residentBlock.deleteMany({
+        where: { blockerId: userId, blockedId: friendId },
+      });
+      if (!result.count) {
+        return NextResponse.json({ error: "This resident is not blocked by you" }, { status: 404 });
+      }
+      return NextResponse.json({ success: true });
+    }
 
     if (action === "read") {
       if (!conversation) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
