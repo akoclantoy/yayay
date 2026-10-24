@@ -33,6 +33,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { FriendTogetherCelebration } from "@/components/messaging/friend-together-celebration";
 import { GroupChatPanel } from "@/components/messaging/group-chat-panel";
+import { ResidentQrShareDialog } from "@/components/messaging/resident-qr-share-dialog";
 import { MessageMedia } from "@/components/messaging/message-media";
 import { PickupMessenger } from "@/components/messaging/pickup-messenger";
 import { cn } from "@/lib/utils";
@@ -1380,7 +1381,7 @@ export function ResidentMessenger({
                         <MapPin className="h-5 w-5" />
                       </button>
                     )}
-                    <button type="button" title="Share your QR code" aria-label="Share your QR code" onClick={() => setShareQrOpen(true)} className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition")}><Wallet className="h-5 w-5" /></button>
+                    <button type="button" title="Share your QR code" aria-label="Share your QR code" onClick={() => setShareQrOpen(true)} className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition")}><QrCode className="h-5 w-5" /></button>
                     <button type="button" title="Conversation appearance" aria-label="Conversation appearance" onClick={() => setThemeOpen((open) => !open)} className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition")}><Settings2 className="h-5 w-5" /></button>
                     <button type="button" title="Conversation settings" aria-label="Conversation settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen((open) => !open); setThemeOpen(false); }} className={cn(styles.headerAction, "flex h-10 w-10 items-center justify-center rounded-full transition")}><MoreHorizontal className="h-5 w-5" /></button>
                   </div>
@@ -1687,6 +1688,8 @@ export function ResidentMessenger({
       {tab === "groups" && <GroupChatPanel
         residentId={residentId}
         friends={data?.friends ?? []}
+        ownQrCode={data?.ownProfile?.qrCode ?? null}
+        residentName={data?.ownProfile?.user.name ?? residentName}
         initialGroupId={activeGroupId}
         onClose={() => {
           setActiveGroupId(null);
@@ -1713,7 +1716,16 @@ export function ResidentMessenger({
 
       {forwardSource && <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="forward-message-title"><div className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6"><div className="flex items-start justify-between"><div><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Forward className="h-5 w-5" /></span><h2 id="forward-message-title" className="mt-3 text-lg font-bold">Forward message</h2><p className="mt-1 text-sm text-muted-foreground">Choose a friend or group to share it with.</p></div><button type="button" aria-label="Close forwarding dialog" onClick={() => setForwardSource(null)} className="rounded-full p-2 text-muted-foreground transition hover:bg-muted"><X className="h-4 w-4" /></button></div><div className="mt-5 space-y-5"><section><h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Friends</h3><div className="max-h-48 space-y-1 overflow-y-auto">{(data?.friends ?? []).map((friend) => <button key={friend.id} type="button" disabled={forwarding} onClick={() => void forwardMessage("direct", friend.id)} className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition hover:bg-primary/5 disabled:opacity-50"><ProfileAvatar resident={friend} size="h-9 w-9" /><span className="min-w-0 flex-1 truncate text-sm font-medium">{displayName(friend)}</span><Forward className="h-4 w-4 text-muted-foreground" /></button>)}{!data?.friends.length && <p className="rounded-xl bg-muted/50 p-3 text-center text-sm text-muted-foreground">No friends available.</p>}</div></section><section><h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Group chats</h3><div className="max-h-40 space-y-1 overflow-y-auto">{forwardGroups.map((group) => <button key={group.id} type="button" disabled={forwarding} onClick={() => void forwardMessage("group", group.id)} className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition hover:bg-primary/5 disabled:opacity-50"><Avatar className="h-9 w-9"><AvatarImage src={group.imageUrl ?? undefined} alt={group.name} /><AvatarFallback><Users className="h-4 w-4" /></AvatarFallback></Avatar><span className="min-w-0 flex-1 truncate text-sm font-medium">{group.name}</span><Forward className="h-4 w-4 text-muted-foreground" /></button>)}{!forwardGroups.length && <p className="rounded-xl bg-muted/50 p-3 text-center text-sm text-muted-foreground">No group chats available.</p>}</div></section></div><Button type="button" variant="outline" className="mt-5 w-full" disabled={forwarding} onClick={() => setForwardSource(null)}>Cancel</Button></div></div>}
 
-      {shareQrOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="share-qr-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl"><div className="mb-4 flex items-center justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><QrCode className="h-5 w-5" /></span><button type="button" aria-label="Close QR code" onClick={() => setShareQrOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted"><X className="h-4 w-4" /></button></div><h2 id="share-qr-title" className="text-lg font-bold">Share your QR Code</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">Let your friend scan this code to verify your account before a points transfer.</p>{data?.ownProfile?.qrCode ? <div className="mx-auto mt-5 w-fit rounded-2xl border border-border/70 bg-white p-4 shadow-sm"><QRCode value={data.ownProfile.qrCode} size={216} /></div> : <div role="alert" className="mt-5 rounded-xl bg-danger/10 p-3 text-sm text-danger">Your resident QR code is unavailable.</div>}<p className="mt-3 text-xs font-medium text-muted-foreground">{data?.ownProfile?.user.name ?? residentName}</p><Button className="mt-5 w-full" disabled={working || !data?.ownProfile?.qrCode} onClick={() => void shareQrInConversation()}><QrCode className="h-4 w-4" />{working ? "Sharing..." : "Share in this conversation"}</Button></div></div>}
+      <ResidentQrShareDialog
+        open={shareQrOpen}
+        qrCode={data?.ownProfile?.qrCode}
+        residentName={data?.ownProfile?.user.name ?? residentName}
+        recipientName={activeFriend ? displayName(activeFriend) : "your friend"}
+        audienceText={`Your QR code will be sent as a message in your conversation with ${activeFriend ? displayName(activeFriend) : "your friend"}. Only residents in this conversation can view and scan it.`}
+        busy={working}
+        onClose={() => setShareQrOpen(false)}
+        onConfirm={() => void shareQrInConversation()}
+      />
 
       {scannerOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="qr-dialog-title"><div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:p-7"><div className="flex items-start justify-between"><div><h2 id="qr-dialog-title" className="text-lg font-bold">{transferMode ? "Transfer points" : "Scan to connect"}</h2><p className="mt-1 text-sm text-muted-foreground">{transferMode ? "Scan your friend's QR code to choose a recipient." : "Scanning a resident's QR code connects you as friends right away."}</p></div><button type="button" aria-label="Close scanner" onClick={() => setScannerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button></div><div id="resident-qr-reader" className="mt-5 min-h-60 overflow-hidden rounded-2xl bg-slate-950" />{scannerError && <p role="alert" className="mt-3 rounded-xl bg-danger/10 p-3 text-sm text-danger">{scannerError}</p>}<p className="mt-3 text-center text-xs text-muted-foreground">Allow camera access and hold the QR code inside the frame.</p></div></div>}
 

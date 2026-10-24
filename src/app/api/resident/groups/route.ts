@@ -15,14 +15,17 @@ const messageSchema = z.object({
   content: z.string().trim().max(2000).optional(),
 });
 const updateSchema = z.object({
-  action: z.enum(["read", "react", "settings", "add_members", "set_nickname"]),
+  action: z.enum(["read", "react", "settings", "add_members", "set_nickname", "edit_message", "delete_message"]),
   groupId: z.string().min(1),
   memberIds: z.array(z.string().min(1)).min(1).max(50).optional(),
   nickname: z.string().trim().max(32).optional(),
   messageId: z.string().min(1).optional(),
+  content: z.string().trim().min(1).max(2000).optional(),
   reaction: z.enum(["LIKE", "HEART", "FUNNY", "ANGRY"]).optional(),
 }).refine((input) =>
   (input.action !== "react" || Boolean(input.messageId && input.reaction)) &&
+  (input.action !== "edit_message" || Boolean(input.messageId && input.content)) &&
+  (input.action !== "delete_message" || Boolean(input.messageId)) &&
   (input.action !== "set_nickname" || input.nickname !== undefined),
 );
 
@@ -441,6 +444,81 @@ export async function PATCH(request: Request) {
     const input = updateSchema.parse(await request.json());
     const membership = await getMembership(input.groupId, userId);
     if (!membership) return NextResponse.json({ error: "Group not found" }, { status: 404 });
+
+    if (input.action === "edit_message" || input.action === "delete_message") {
+      const message = await db.groupMessage.findFirst({
+        where: { id: input.messageId, groupId: input.groupId, deletedAt: null },
+        select: {
+          id: true,
+          senderId: true,
+          content: true,
+          mediaUrl: true,
+          mediaType: true,
+          mediaPublicId: true,
+        },
+      });
+      if (!message) return NextResponse.json({ error: "Message not found" }, { status: 404 });
+      if (message.senderId !== userId) {
+        return NextResponse.json({ error: "Only your own messages can be changed" }, { status: 403 });
+      }
+      if (input.action === "edit_message") {
+        const content = input.content?.trim();
+        if (message.content.startsWith("ERGROUPQR:")) {
+          return NextResponse.json({ error: "Shared QR codes cannot be edited" }, { status: 403 });
+        }
+        if (message.mediaUrl) {
+          return NextResponse.json({ error: "Messages with attachments cannot be edited" }, { status: 400 });
+        }
+        if (!content || content.startsWith("ERGROUPQR:")) {
+          return NextResponse.json({ error: "Enter a valid message" }, { status: 400 });
+        }
+        const updated = await db.$transaction(async (tx) => {
+          const updatedMessage = await tx.groupMessage.update({
+            where: { id: message.id },
+            data: { content },
+            select: {
+              id: true,
+              senderId: true,
+              content: true,
+              mediaUrl: true,
+              mediaType: true,
+              createdAt: true,
+              reactions: { select: { userId: true, kind: true } },
+            },
+          });
+          await tx.groupConversation.update({
+            where: { id: input.groupId },
+            data: { updatedAt: new Date() },
+          });
+          return updatedMessage;
+        });
+        return NextResponse.json({ message: updated });
+      }
+
+      await db.$transaction(async (tx) => {
+        await tx.groupMessageReaction.deleteMany({ where: { messageId: message.id } });
+        await tx.groupMessage.update({
+          where: { id: message.id },
+          data: { deletedAt: new Date() },
+        });
+        await tx.groupConversation.update({
+          where: { id: input.groupId },
+          data: { updatedAt: new Date() },
+        });
+      });
+      if (message.mediaPublicId) {
+        try {
+          if (message.mediaType?.startsWith("video/")) {
+            await deleteVideo(message.mediaPublicId);
+          } else {
+            await deleteImage(message.mediaPublicId);
+          }
+        } catch (cleanupError) {
+          console.error("Failed to remove a deleted group message attachment", cleanupError);
+        }
+      }
+      return NextResponse.json({ success: true });
+    }
 
     if (input.action === "set_nickname") {
       const member = await db.groupConversationMember.update({

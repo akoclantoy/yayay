@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import QRCode from "react-qr-code";
-import { ArrowLeft, Check, Forward, ImagePlus, MessageCircle, Palette, Paperclip, Plus, QrCode, Send, Settings2, SmilePlus, Users, Wallet, X } from "lucide-react";
+import { ArrowLeft, Check, Forward, ImagePlus, MessageCircle, Palette, Paperclip, Pencil, Plus, QrCode, Send, Settings2, SmilePlus, Trash2, Users, Wallet, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { MessageMedia } from "@/components/messaging/message-media";
+import { ResidentQrShareDialog } from "@/components/messaging/resident-qr-share-dialog";
 import { cn } from "@/lib/utils";
 
 type Resident = { id: string; name: string | null; image: string | null };
@@ -101,12 +102,16 @@ function GroupAvatar({ imageUrl, name, size = "h-12 w-12" }: { imageUrl: string 
 export function GroupChatPanel({
   residentId,
   friends,
+  ownQrCode,
+  residentName,
   initialGroupId = null,
   onClose,
   onForward,
 }: {
   residentId: string;
   friends: Resident[];
+  ownQrCode: string | null;
+  residentName: string;
   initialGroupId?: string | null;
   onClose: () => void;
   onForward: (messageId: string) => void;
@@ -130,6 +135,9 @@ export function GroupChatPanel({
   const [nickname, setNickname] = useState("");
   const [activeReactionMessageId, setActiveReactionMessageId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [shareQrOpen, setShareQrOpen] = useState(false);
+  const [editMessageId, setEditMessageId] = useState<string | null>(null);
+  const [editMessageText, setEditMessageText] = useState("");
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [working, setWorking] = useState(false);
@@ -160,6 +168,9 @@ export function GroupChatPanel({
 
   useEffect(() => {
     shouldAutoScrollRef.current = true;
+    setShareQrOpen(false);
+    setEditMessageId(null);
+    setEditMessageText("");
   }, [selectedGroupId]);
 
   useEffect(() => {
@@ -279,10 +290,73 @@ export function GroupChatPanel({
       setGroups((current) => current.map((item) => item.id === selectedGroupId
         ? { ...item, unread: false, lastMessage: result.message }
         : item));
+      setShareQrOpen(false);
+      setNotice("Your QR code was shared in this group.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to share your QR code.");
     } finally {
       setSendingMessage(false);
+    }
+  }
+
+  async function saveGroupMessage(messageId: string) {
+    if (!selectedGroupId || !editMessageText.trim()) return;
+    setWorking(true);
+    setError(null);
+    try {
+      const result = await requestJson<{ message: GroupMessage }>("/api/resident/groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "edit_message",
+          groupId: selectedGroupId,
+          messageId,
+          content: editMessageText,
+        }),
+      });
+      setDetails((current) => current
+        ? { ...current, messages: current.messages.map((item) => item.id === messageId ? result.message : item) }
+        : current);
+      setEditMessageId(null);
+      setEditMessageText("");
+      void loadGroups().catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : "Unable to refresh your group list.");
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to edit this message.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function deleteGroupMessage(messageId: string) {
+    if (!selectedGroupId || !window.confirm("Delete this message for everyone in the group?")) return;
+    setWorking(true);
+    setError(null);
+    try {
+      await requestJson("/api/resident/groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete_message",
+          groupId: selectedGroupId,
+          messageId,
+        }),
+      });
+      setDetails((current) => current
+        ? { ...current, messages: current.messages.filter((item) => item.id !== messageId) }
+        : current);
+      if (editMessageId === messageId) {
+        setEditMessageId(null);
+        setEditMessageText("");
+      }
+      void loadGroups().catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : "Unable to refresh your group list.");
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to delete this message.");
+    } finally {
+      setWorking(false);
     }
   }
 
@@ -552,7 +626,7 @@ export function GroupChatPanel({
               variant="ghost"
               aria-label="Share your QR code in this group"
               title="Share your QR code"
-              onClick={() => void shareQr()}
+              onClick={() => setShareQrOpen(true)}
               disabled={sendingMessage || !currentMember}
               className="h-10 gap-2 rounded-full border border-[#cfe4ff] bg-[#e7f3ff] px-3 text-[#0866ff] shadow-sm transition hover:bg-[#d9ebff] hover:text-[#075ce5] focus-visible:ring-2 focus-visible:ring-[#0866ff] focus-visible:ring-offset-2 disabled:opacity-50"
             >
@@ -650,7 +724,31 @@ export function GroupChatPanel({
                           </motion.div>
                         )}
                       </AnimatePresence>
-                      {qrCode ? (
+                      {editMessageId === item.id ? (
+                        <div className="min-w-[min(72vw,360px)] space-y-3" onPointerDown={(event) => event.stopPropagation()}>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-semibold text-primary">Edit group message</span>
+                            <span className="text-[11px] text-muted-foreground">{editMessageText.length}/2000</span>
+                          </div>
+                          <textarea
+                            autoFocus
+                            aria-label="Edit group message"
+                            maxLength={2000}
+                            rows={4}
+                            value={editMessageText}
+                            onChange={(event) => setEditMessageText(event.target.value)}
+                            className="min-h-28 w-full resize-y rounded-xl border border-border/70 bg-white px-3 py-2 text-sm leading-6 text-foreground outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" size="sm" variant="outline" disabled={working} onClick={() => { setEditMessageId(null); setEditMessageText(""); }}>
+                              Cancel
+                            </Button>
+                            <Button type="button" size="sm" disabled={!editMessageText.trim() || working} onClick={() => void saveGroupMessage(item.id)}>
+                              {working ? "Saving..." : "Save"}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : qrCode ? (
                         <button
                           type="button"
                           disabled={mine}
@@ -667,6 +765,27 @@ export function GroupChatPanel({
                       <p className={cn("mt-2 text-right text-[10px]", mine ? "text-white/70" : "text-muted-foreground")}>{new Intl.DateTimeFormat("en-PH", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }).format(new Date(item.createdAt))}</p>
                     </div>
                     <div className={cn("mt-1 flex items-center gap-1", mine && "justify-end")}>
+                      {mine && !qrCode && item.content && !item.mediaUrl && editMessageId !== item.id && (
+                        <button
+                          type="button"
+                          title="Edit message"
+                          aria-label="Edit group message"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={() => { setEditMessageId(item.id); setEditMessageText(item.content); }}
+                          className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-white hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        ><Pencil className="h-3.5 w-3.5" /></button>
+                      )}
+                      {mine && editMessageId !== item.id && (
+                        <button
+                          type="button"
+                          title="Delete message"
+                          aria-label="Delete group message"
+                          disabled={working}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={() => void deleteGroupMessage(item.id)}
+                          className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
+                        ><Trash2 className="h-3.5 w-3.5" /></button>
+                      )}
                       <button type="button" title="Forward message" aria-label="Forward message" onClick={() => onForward(item.id)} className="mr-1 rounded-lg p-1.5 text-muted-foreground transition hover:bg-white hover:text-primary"><Forward className="h-3.5 w-3.5" /></button>
                       <button type="button" title="Add a reaction" aria-label="Add a reaction" onClick={() => openReactionPicker(item.id)} className="mr-1 rounded-lg p-1.5 text-muted-foreground transition hover:bg-white hover:text-primary"><SmilePlus className="h-3.5 w-3.5" /></button>
                       {REACTIONS.map((reaction) => {
@@ -741,6 +860,17 @@ export function GroupChatPanel({
       )}
 
       {qrTarget && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="group-transfer-title"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className="flex items-center justify-between"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Wallet className="h-5 w-5" /></div><button type="button" aria-label="Close points transfer" onClick={() => { setQrTarget(null); setTransferConfirmation(false); }} className="rounded-full p-2 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button></div><h2 id="group-transfer-title" className="mt-3 text-lg font-bold">{transferConfirmation ? "Confirm points transfer" : "Send points"}</h2><p className="mt-1 text-sm text-muted-foreground">To {qrTarget.name} · verified from their QR shared in this group.</p>{transferConfirmation ? <div className="mt-5 rounded-2xl bg-primary/5 p-4 text-center"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">You are sending</p><p className="mt-2 text-3xl font-bold text-primary">{Number(transferAmount).toLocaleString("en-US")} pts</p><p className="mt-1 text-sm text-muted-foreground">This transfer cannot be undone.</p></div> : <div className="mt-5 space-y-3"><div className="rounded-xl bg-muted/60 p-3 text-sm"><span className="text-muted-foreground">Available balance</span><strong className="float-right text-primary">{transferBalance?.toLocaleString("en-US") ?? "Loading..."} pts</strong></div><label className="block text-left text-xs font-medium">Points to send<input type="number" min="1" max="10000" step="1" required value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm" placeholder="Maximum 10,000" /></label><p className="text-xs text-muted-foreground">Transfers are limited to group members and up to 10,000 points.</p></div>}<div className="mt-5 space-y-2"><Button className="w-full" disabled={working || transferBalance === null || (!transferConfirmation && (!transferAmount || Number(transferAmount) > (transferBalance ?? 0)))} onClick={() => transferConfirmation ? void confirmGroupTransfer() : setTransferConfirmation(true)}>{working ? "Sending..." : transferConfirmation ? "Confirm and send points" : "Review transfer"}</Button>{transferConfirmation && <Button type="button" variant="outline" className="w-full" disabled={working} onClick={() => setTransferConfirmation(false)}>Go back</Button>}</div></div></div>}
+
+      <ResidentQrShareDialog
+        open={shareQrOpen}
+        qrCode={ownQrCode}
+        residentName={residentName}
+        recipientName={details?.name ?? selectedGroup?.name ?? "this group"}
+        audienceText={`Your QR code will be sent as a message in ${details?.name ?? selectedGroup?.name ?? "this group"}. Every group member can view and scan it to identify you for a points transfer.`}
+        busy={sendingMessage}
+        onClose={() => setShareQrOpen(false)}
+        onConfirm={() => void shareQr()}
+      />
 
       {(error || notice) && <div role={error ? "alert" : "status"} className={cn("fixed bottom-5 left-1/2 z-[95] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white shadow-xl", error ? "bg-danger" : "bg-primary")}><span>{error ?? notice}</span><button type="button" aria-label="Dismiss message" onClick={() => { setError(null); setNotice(null); }}><X className="h-4 w-4" /></button></div>}
 
