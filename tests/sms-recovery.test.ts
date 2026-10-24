@@ -4,8 +4,10 @@ import {
   createRecoveryCode,
   createResetToken,
   hashRecoveryValue,
+  isSmsRecoveryConfigured,
   normalizePhilippinePhone,
   recoveryValuesMatch,
+  sendRecoverySms,
 } from "../src/lib/sms-recovery";
 import {
   forgotPasswordSchema,
@@ -36,6 +38,51 @@ describe("SMS recovery security helpers", () => {
     assert.equal(normalizePhilippinePhone("+639171234567"), "+639171234567");
     assert.equal(normalizePhilippinePhone("not a phone"), null);
     assert.equal(normalizePhilippinePhone(null), null);
+  });
+
+  it("uses SMS_API_KEY directly when the private SMS service settings are missing", async () => {
+    const previousUrl = process.env.SMS_SERVICE_URL;
+    const previousToken = process.env.SMS_SERVICE_TOKEN;
+    const previousApiKey = process.env.SMS_API_KEY;
+    const originalFetch = globalThis.fetch;
+    delete process.env.SMS_SERVICE_URL;
+    delete process.env.SMS_SERVICE_TOKEN;
+    delete process.env.SMS_API_KEY;
+
+    try {
+      assert.equal(isSmsRecoveryConfigured(), false);
+      process.env.SMS_API_KEY = "test-api-key";
+      assert.equal(isSmsRecoveryConfigured(), true);
+
+      let requestedUrl = "";
+      let requestedBody = "";
+      globalThis.fetch = async (input, init) => {
+        requestedUrl = String(input);
+        requestedBody = String(init?.body);
+        return Response.json([{ status: "queued" }]);
+      };
+
+      await sendRecoverySms("+639171234567", "Test recovery code");
+      assert.equal(requestedUrl, "https://api.semaphore.co/api/v4/messages");
+      const params = new URLSearchParams(requestedBody);
+      assert.equal(params.get("apikey"), "test-api-key");
+      assert.equal(params.get("number"), "+639171234567");
+      assert.equal(params.get("message"), "Test recovery code");
+
+      globalThis.fetch = async () => Response.json([{ status: "failed" }]);
+      await assert.rejects(
+        sendRecoverySms("+639171234567", "Test recovery code"),
+        /SMS provider did not accept the recovery message/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousUrl === undefined) delete process.env.SMS_SERVICE_URL;
+      else process.env.SMS_SERVICE_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.SMS_SERVICE_TOKEN;
+      else process.env.SMS_SERVICE_TOKEN = previousToken;
+      if (previousApiKey === undefined) delete process.env.SMS_API_KEY;
+      else process.env.SMS_API_KEY = previousApiKey;
+    }
   });
 
   it("requires email and password for sign-in, but only requires phone for recovery", () => {

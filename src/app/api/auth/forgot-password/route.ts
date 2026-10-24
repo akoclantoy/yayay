@@ -6,6 +6,7 @@ import { APP_NAME } from "@/lib/constants";
 import {
   createRecoveryCode,
   hashRecoveryValue,
+  isSmsRecoveryConfigured,
   normalizePhilippinePhone,
   sendRecoverySms,
 } from "@/lib/sms-recovery";
@@ -15,7 +16,7 @@ const GENERIC_MESSAGE =
 
 export async function POST(request: Request) {
   try {
-    if (!process.env.SMS_SERVICE_URL || !process.env.SMS_SERVICE_TOKEN) {
+    if (!isSmsRecoveryConfigured()) {
       return NextResponse.json(
         { error: "SMS account recovery is temporarily unavailable." },
         { status: 503 },

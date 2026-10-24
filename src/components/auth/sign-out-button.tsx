@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { signOut } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,6 @@ export function SignOutButton({
   compact?: boolean;
   className?: string;
 }) {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
   const label = pending ? "Signing out" : "Sign out";
 
@@ -25,8 +23,7 @@ export function SignOutButton({
     setPending(true);
     try {
       await signOut({ redirect: false, redirectTo: "/" });
-      router.replace("/");
-      router.refresh();
+      window.location.replace("/");
     } catch (error) {
       console.error("[auth:sign-out]", error);
       toast.error("Unable to sign out. Please try again.");

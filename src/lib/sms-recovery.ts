@@ -39,22 +39,56 @@ export function normalizePhilippinePhone(phone: string | null) {
   return PHONE_PATTERN.test(e164) ? e164 : null;
 }
 
+export function isSmsRecoveryConfigured() {
+  return Boolean(
+    (process.env.SMS_SERVICE_URL && process.env.SMS_SERVICE_TOKEN) ||
+    process.env.SMS_API_KEY,
+  );
+}
+
 export async function sendRecoverySms(to: string, message: string) {
   const serviceUrl = process.env.SMS_SERVICE_URL;
   const serviceToken = process.env.SMS_SERVICE_TOKEN;
-  if (!serviceUrl || !serviceToken) {
-    throw new Error("The SMS recovery service is not configured.");
+
+  if (serviceUrl && serviceToken) {
+    const response = await fetch(new URL("/sms", serviceUrl), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${serviceToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ to, message }),
+      signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`SMS delivery service returned ${response.status}.`);
+    return;
   }
 
-  const response = await fetch(new URL("/sms", serviceUrl), {
+  const apiKey = process.env.SMS_API_KEY;
+  if (!apiKey) throw new Error("SMS account recovery is not configured.");
+
+  const response = await fetch("https://api.semaphore.co/api/v4/messages", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${serviceToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ to, message }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ apikey: apiKey, number: to, message }),
     signal: AbortSignal.timeout(10_000),
     cache: "no-store",
   });
-  if (!response.ok) throw new Error(`SMS delivery service returned ${response.status}.`);
+  if (!response.ok) throw new Error(`SMS provider returned ${response.status}.`);
+
+  const result: unknown = await response.json();
+  if (
+    !Array.isArray(result) ||
+    result.length === 0 ||
+    !result.every(
+      (item: unknown) =>
+        typeof item === "object" &&
+        item !== null &&
+        "status" in item &&
+        ["pending", "queued"].includes(String(item.status).toLowerCase()),
+    )
+  ) {
+    throw new Error("SMS provider did not accept the recovery message.");
+  }
 }
