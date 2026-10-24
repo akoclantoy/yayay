@@ -85,6 +85,67 @@ describe("SMS recovery security helpers", () => {
     }
   });
 
+  it("prefers SMS_API_KEY over private service settings and accepts sent responses", async () => {
+    const previousUrl = process.env.SMS_SERVICE_URL;
+    const previousToken = process.env.SMS_SERVICE_TOKEN;
+    const previousApiKey = process.env.SMS_API_KEY;
+    const originalFetch = globalThis.fetch;
+    process.env.SMS_SERVICE_URL = "http://sms-service.internal:10000";
+    process.env.SMS_SERVICE_TOKEN = "test-service-token";
+    process.env.SMS_API_KEY = "test-api-key";
+
+    try {
+      let requestedUrl = "";
+      globalThis.fetch = async (input) => {
+        requestedUrl = String(input);
+        return Response.json([{ status: "Sent" }]);
+      };
+
+      await sendRecoverySms("+639171234567", "Test recovery code");
+      assert.equal(requestedUrl, "https://api.semaphore.co/api/v4/messages");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousUrl === undefined) delete process.env.SMS_SERVICE_URL;
+      else process.env.SMS_SERVICE_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.SMS_SERVICE_TOKEN;
+      else process.env.SMS_SERVICE_TOKEN = previousToken;
+      if (previousApiKey === undefined) delete process.env.SMS_API_KEY;
+      else process.env.SMS_API_KEY = previousApiKey;
+    }
+  });
+
+  it("uses the private SMS service when its token is configured without an API key", async () => {
+    const previousUrl = process.env.SMS_SERVICE_URL;
+    const previousToken = process.env.SMS_SERVICE_TOKEN;
+    const previousApiKey = process.env.SMS_API_KEY;
+    const originalFetch = globalThis.fetch;
+    process.env.SMS_SERVICE_URL = "http://sms-service.internal:10000";
+    process.env.SMS_SERVICE_TOKEN = "test-service-token";
+    delete process.env.SMS_API_KEY;
+
+    try {
+      let requestedUrl = "";
+      let authorization = "";
+      globalThis.fetch = async (input, init) => {
+        requestedUrl = String(input);
+        authorization = new Headers(init?.headers).get("authorization") ?? "";
+        return new Response(null, { status: 202 });
+      };
+
+      await sendRecoverySms("+639171234567", "Test recovery code");
+      assert.equal(requestedUrl, "http://sms-service.internal:10000/sms");
+      assert.equal(authorization, "Bearer test-service-token");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousUrl === undefined) delete process.env.SMS_SERVICE_URL;
+      else process.env.SMS_SERVICE_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.SMS_SERVICE_TOKEN;
+      else process.env.SMS_SERVICE_TOKEN = previousToken;
+      if (previousApiKey === undefined) delete process.env.SMS_API_KEY;
+      else process.env.SMS_API_KEY = previousApiKey;
+    }
+  });
+
   it("requires email and password for sign-in, but only requires phone for recovery", () => {
     const phone = "+63 917 123 4567";
     assert.equal(loginSchema.safeParse({ email: "resident@example.com", password: "password123" }).success, true);

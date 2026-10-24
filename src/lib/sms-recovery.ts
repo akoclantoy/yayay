@@ -41,33 +41,12 @@ export function normalizePhilippinePhone(phone: string | null) {
 
 export function isSmsRecoveryConfigured() {
   return Boolean(
-    (process.env.SMS_SERVICE_URL && process.env.SMS_SERVICE_TOKEN) ||
-    process.env.SMS_API_KEY,
+    process.env.SMS_API_KEY ||
+      (process.env.SMS_SERVICE_URL && process.env.SMS_SERVICE_TOKEN),
   );
 }
 
-export async function sendRecoverySms(to: string, message: string) {
-  const serviceUrl = process.env.SMS_SERVICE_URL;
-  const serviceToken = process.env.SMS_SERVICE_TOKEN;
-
-  if (serviceUrl && serviceToken) {
-    const response = await fetch(new URL("/sms", serviceUrl), {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${serviceToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ to, message }),
-      signal: AbortSignal.timeout(10_000),
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error(`SMS delivery service returned ${response.status}.`);
-    return;
-  }
-
-  const apiKey = process.env.SMS_API_KEY;
-  if (!apiKey) throw new Error("SMS account recovery is not configured.");
-
+async function sendDirectSms(apiKey: string, to: string, message: string) {
   const response = await fetch("https://api.semaphore.co/api/v4/messages", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -78,6 +57,7 @@ export async function sendRecoverySms(to: string, message: string) {
   if (!response.ok) throw new Error(`SMS provider returned ${response.status}.`);
 
   const result: unknown = await response.json();
+  const acceptedStatuses = ["pending", "queued", "sent", "delivered"];
   if (
     !Array.isArray(result) ||
     result.length === 0 ||
@@ -86,9 +66,35 @@ export async function sendRecoverySms(to: string, message: string) {
         typeof item === "object" &&
         item !== null &&
         "status" in item &&
-        ["pending", "queued"].includes(String(item.status).toLowerCase()),
+        acceptedStatuses.includes(String(item.status).toLowerCase()),
     )
   ) {
     throw new Error("SMS provider did not accept the recovery message.");
   }
+}
+
+export async function sendRecoverySms(to: string, message: string) {
+  const apiKey = process.env.SMS_API_KEY;
+  if (apiKey) {
+    await sendDirectSms(apiKey, to, message);
+    return;
+  }
+
+  const serviceUrl = process.env.SMS_SERVICE_URL;
+  const serviceToken = process.env.SMS_SERVICE_TOKEN;
+  if (!serviceUrl || !serviceToken) {
+    throw new Error("SMS account recovery is not configured.");
+  }
+
+  const response = await fetch(new URL("/sms", serviceUrl), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${serviceToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ to, message }),
+    signal: AbortSignal.timeout(10_000),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`SMS delivery service returned ${response.status}.`);
 }
