@@ -61,8 +61,8 @@ export async function POST(request: Request) {
     const phone = user ? storedPhone : null;
     const code = createRecoveryCode();
     const challengeResult = await db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`sms-recovery:client:${clientHash}`}))`;
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`sms-recovery:identifier:${identifierHash}`}))`;
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`sms-recovery:client:${clientHash}`}))`;
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`sms-recovery:identifier:${identifierHash}`}))`;
 
       const [recentIdentifierRequests, recentClientRequests, latestRequest] = await Promise.all([
         tx.smsRecoveryChallenge.count({
